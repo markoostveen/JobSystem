@@ -25,7 +25,7 @@ namespace JbSystem {
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
 
-		InternalJobBase* TryTakeJob();
+		InternalJobBase* TryTakeJob(JobTime maxTimeInvestment = JobTime::Long);
 		void GiveJob(InternalJobBase*& newJob);
 
 		//Is the read suppost to be active

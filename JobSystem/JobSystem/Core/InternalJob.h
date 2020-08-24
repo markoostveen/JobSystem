@@ -8,15 +8,15 @@ namespace JbSystem {
 		/// <summary>
 		/// For your smallest jobs
 		/// </summary>
-		Short,
+		Short = 0,
 		/// <summary>
 		/// For jobs either depended on short jobs, or taking a little bit longer
 		/// </summary>
-		Medium,
+		Medium = 1,
 		/// <summary>
 		/// For lengthy jobs, like loading files from places
 		/// </summary>
-		Long
+		Long = 2
 	};
 
 	class InternalJobBase {

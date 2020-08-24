@@ -122,7 +122,7 @@ std::vector<InternalJobBase*> JbSystem::JobSystem::Shutdown()
 void JbSystem::JobSystem::ExecuteJob()
 {
 	JobSystem* jobsystem = GetInstance();
-	InternalJobBase* job = jobsystem->StealJobFromWorker();
+	InternalJobBase* job = jobsystem->StealJobFromWorker(JobTime::Medium);
 	if (job != nullptr)
 	{
 		job->Run();
@@ -135,18 +135,23 @@ JobSystem* JbSystem::JobSystem::GetInstance()
 	return JobSystemSingleton;
 }
 
+size_t finishedJobs = 0;
 int JbSystem::JobSystem::ActiveJobCount()
 {
 	_jobsMutex.lock();
 	int jobCount = _scheduledJobs.size();
 	_jobsMutex.unlock();
+	std::cout << "Total jobs Finished: " << finishedJobs << std::endl;
 	return jobCount;
 }
 
 int JbSystem::JobSystem::ScheduleJob(InternalJobBase* newjob)
 {
+	int jobId = newjob->GetId();
+
+#ifdef DEBUG
 	if (_workerCount != 0) {
-		int jobId = newjob->GetId();
+#endif
 
 		_jobsMutex.lock();
 		int worker = rand() % _workerCount;
@@ -169,12 +174,17 @@ int JbSystem::JobSystem::ScheduleJob(InternalJobBase* newjob)
 		}
 
 		return jobId;
+#ifdef DEBUG
 	}
 	else {
 		std::cout << "Jobsystem is not running, please start it explicitly. This job is not scheduled!" << std::endl;
-		delete newjob;
-		return 0;
+		_jobsMutex.lock();
+		_scheduledJobs.insert(jobId);
+		_jobsMutex.unlock();
+		FinishJob(newjob);
+		return jobId;
 	}
+#endif
 }
 
 void JbSystem::JobSystem::WaitForJobCompletion(int jobId)
@@ -194,10 +204,10 @@ void JbSystem::JobSystem::WaitForJobCompletion(int jobId)
 	}
 }
 
-InternalJobBase* JbSystem::JobSystem::StealJobFromWorker()
+InternalJobBase* JbSystem::JobSystem::StealJobFromWorker(JobTime maxTimeInvestment)
 {
 	int worker = rand() % _workerCount;
-	return _workers[worker].TryTakeJob();
+	return _workers[worker].TryTakeJob(maxTimeInvestment);
 }
 
 void JbSystem::JobSystem::FinishJob(InternalJobBase*& job)
@@ -206,6 +216,7 @@ void JbSystem::JobSystem::FinishJob(InternalJobBase*& job)
 	_scheduledJobs.erase(job->GetId());
 	_jobsMutex.unlock();
 	delete job;
+	finishedJobs++;
 }
 
 std::vector<InternalJobBase*> JbSystem::JobSystem::StealAllJobsFromWorkers()

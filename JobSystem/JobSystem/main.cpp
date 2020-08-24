@@ -39,11 +39,11 @@ int main()
 				{
 					JobSystem::Schedule([] {
 						int x = 0;
-						for (size_t i = 0; i < 10000; i++)
+						for (size_t i = 0; i < 1000; i++)
 						{
 							x++;
 						}
-						}, JobTime::Medium);
+						}, JobTime::Short);
 				}
 			}
 		};
@@ -59,9 +59,21 @@ int main()
 			}
 		};
 
+		auto job4 = []() {
+			for (size_t i = 0; i < 500; i++)
+			{
+				int x = 0;
+				for (size_t y = 0; y < 5000; y++)
+				{
+					x++;
+				}
+			}
+		};
+
 		int job1Id = JobSystem::Schedule(job1, JobTime::Short);
 		int job2Id = JobSystem::Schedule(job2, JobTime::Long, job1Id);
-		int job3Id = JobSystem::Schedule(job3, JobTime::Short, job1Id);
+		int job3Id = JobSystem::Schedule(job3, JobTime::Medium, job1Id);
+		int job4Id = JobSystem::Schedule(job4, JobTime::Long, job3Id);
 		jobIds.push_back(job2Id);
 	}
 

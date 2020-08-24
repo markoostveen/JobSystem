@@ -72,7 +72,7 @@ namespace JbSystem {
 		/// <returns></returns>
 		int ScheduleJob(InternalJobBase* newjob);
 
-		InternalJobBase* StealJobFromWorker();
+		InternalJobBase* StealJobFromWorker(JobTime maxTimeInvestment = JobTime::Long);
 
 		/// <summary>
 		/// Finishes job and cleans up after
@@ -113,6 +113,9 @@ namespace JbSystem {
 	template<typename JobFunction, typename	 ...JobId>
 	inline int JobSystem::Schedule(JobFunction function, JobTime timeInvestment, JobId... jobIds)
 	{
+		if (timeInvestment == JobTime::Short)
+			timeInvestment = JobTime::Medium;
+
 		auto jobLambda = [function, ... jobIds = std::forward<JobId>(jobIds)]() {
 			std::array<int, sizeof...(JobId)> dependencyArray = { jobIds ... };
 			for (int i = 0; i < dependencyArray.size(); i++) {
@@ -122,17 +125,15 @@ namespace JbSystem {
 			function();
 		};
 
-		switch (timeInvestment) {
-		case JobTime::Short: timeInvestment = JobTime::Medium;
-		case JobTime::Medium: timeInvestment = JobTime::Long;
-		}
-
 		return Schedule(jobLambda, timeInvestment);
 	}
 
 	template<typename JobFunction>
 	inline int JobSystem::Schedule(JobFunction function, std::vector<int> jobIds, JobTime timeInvestment)
 	{
+		if (timeInvestment == JobTime::Short)
+			timeInvestment = JobTime::Medium;
+
 		auto jobLambda = [function, jobIds]() {
 			for (int i = 0; i < jobIds.size(); i++) {
 				WaitForJobCompletion(jobIds[i]);
@@ -140,11 +141,6 @@ namespace JbSystem {
 
 			function();
 		};
-
-		switch (timeInvestment) {
-		case JobTime::Short: timeInvestment = JobTime::Medium;
-		case JobTime::Medium: timeInvestment = JobTime::Long;
-		}
 
 		return Schedule(jobLambda, timeInvestment);
 	}

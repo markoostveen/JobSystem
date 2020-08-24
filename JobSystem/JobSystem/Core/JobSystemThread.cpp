@@ -110,24 +110,22 @@ void JobSystemWorker::Start()
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
-InternalJobBase* JbSystem::JobSystemWorker::TryTakeJob()
+InternalJobBase* JbSystem::JobSystemWorker::TryTakeJob(JobTime maxTimeInvestment)
 {
 	//Return a result based on weight of a job
 
 	std::lock_guard lock(_queueMutex);
-	if (!_shortTaskQueue.empty()) {
+	if (!_shortTaskQueue.empty() && maxTimeInvestment >= JobTime::Short) {
 		auto value = _shortTaskQueue.front();
 		_shortTaskQueue.pop();
 		return value;
 	}
-
-	if (!_mediumTaskQueue.empty()) {
+	else if (!_mediumTaskQueue.empty() && maxTimeInvestment >= JobTime::Medium) {
 		auto value = _mediumTaskQueue.front();
 		_mediumTaskQueue.pop();
 		return value;
 	}
-
-	if (!_longTaskQueue.empty()) {
+	else if (!_longTaskQueue.empty() && maxTimeInvestment >= JobTime::Long) {
 		auto value = _longTaskQueue.front();
 		_longTaskQueue.pop();
 		return value;
