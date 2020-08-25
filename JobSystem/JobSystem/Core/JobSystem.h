@@ -9,6 +9,7 @@
 #include <set>
 #include <unordered_set>
 #include <array>
+#include <type_traits>
 
 namespace JbSystem {
 	class JobSystemWorker;
@@ -26,12 +27,17 @@ namespace JbSystem {
 			GetInstance()->Start(threadCount);
 		}
 
+		//Single function
 		template<typename JobFunction>
 		static int Schedule(JobFunction function, JobTime timeInvestment);
 		template<typename JobFunction, typename ...JobId>
 		static int Schedule(JobFunction function, JobTime timeInvestment, JobId... jobIds);
 		template<typename JobFunction>
-		static int Schedule(JobFunction function, std::vector<int> jobIds, JobTime timeInvestment);
+		static int Schedule(JobFunction function, JobTime timeInvestment, std::vector<int> jobIds);
+
+		//Parallel loops
+		template<typename JobFunction, class = typename std::enable_if<std::is_convertible<JobFunction, std::function<void(int)>>::value>::type>
+		static std::vector<int> Schedule(int startIndex, int endIndex, int batchSize, JobTime timeInvestment, JobFunction function);
 
 		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed
@@ -92,8 +98,6 @@ namespace JbSystem {
 		/// <param name="jobs"></param>
 		void RescheduleJobs(std::vector<InternalJobBase*>& jobs);
 
-		std::mutex _reconfigureLock;
-
 		std::mutex _jobsMutex;
 		std::unordered_set<int> _scheduledJobs;
 
@@ -129,7 +133,7 @@ namespace JbSystem {
 	}
 
 	template<typename JobFunction>
-	inline int JobSystem::Schedule(JobFunction function, std::vector<int> jobIds, JobTime timeInvestment)
+	inline int JobSystem::Schedule(JobFunction function, JobTime timeInvestment, std::vector<int> jobIds)
 	{
 		if (timeInvestment == JobTime::Short)
 			timeInvestment = JobTime::Medium;
@@ -143,5 +147,36 @@ namespace JbSystem {
 		};
 
 		return Schedule(jobLambda, timeInvestment);
+	}
+	template<typename JobFunction, class T>
+	inline std::vector<int> JobSystem::Schedule(int startIndex, int endIndex, int batchSize, JobTime timeInvestment, JobFunction function)
+	{
+		std::vector<int> jobIds;
+
+		//Schedule and create lambda for all job kinds
+		int totalBatches = 0;
+		int CurrentBatchEnd = endIndex;
+		while (CurrentBatchEnd > batchSize) {
+			CurrentBatchEnd -= batchSize;
+			jobIds.push_back(Schedule(
+				[function, jobStartIndex = endIndex - ((totalBatches + 1) * batchSize), jobEndIndex = endIndex - (totalBatches * batchSize)](){
+				for (int i = jobStartIndex; i < jobEndIndex; i++)
+				{
+					function(i);
+				}
+			}, timeInvestment));
+			totalBatches++;
+		}
+
+		//Create last job
+		jobIds.push_back(Schedule(
+			[function, jobStartIndex = 0, jobEndIndex = endIndex - (totalBatches * batchSize)](){
+			for (int i = jobStartIndex; i < jobEndIndex; i++)
+			{
+				function(i);
+			}
+		}, timeInvestment));
+
+		return jobIds;
 	}
 }

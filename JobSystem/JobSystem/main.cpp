@@ -6,9 +6,7 @@
 using namespace std;
 using namespace JbSystem;
 
-int main()
-{
-	cout << "Hello JobSystem." << endl;
+void test() {
 	const int totalIterations = 5000;
 
 	std::vector<int> jobIds;
@@ -77,40 +75,61 @@ int main()
 		jobIds.push_back(job2Id);
 	}
 
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	std::this_thread::sleep_for(std::chrono::seconds(5));
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	JobSystem::ReConfigure(1);
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	std::this_thread::sleep_for(std::chrono::seconds(5));
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	JobSystem::ReConfigure(8);
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	std::this_thread::sleep_for(std::chrono::seconds(5));
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	JobSystem::ReConfigure(31);
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	std::this_thread::sleep_for(std::chrono::seconds(5));
-	std::cout << "Current remaining Jobs: " << JobSystem::GetInstance()->ActiveJobCount() << std::endl;
 	JobSystem::ReConfigure();
-
-	int currentJobs = JobSystem::GetInstance()->ActiveJobCount();
-	while (currentJobs != 0) {
-		std::this_thread::sleep_for(std::chrono::seconds(1));
-		currentJobs = JobSystem::GetInstance()->ActiveJobCount();
-		std::cout << "Current remaining Jobs: " << currentJobs << std::endl;
-	}
 
 	auto exitJob = []() {
 		std::cout << "All Jobs completed" << std::endl;
 	};
-	int finalJobId = JobSystem::Schedule(exitJob, jobIds, JobTime::Long);
-	JobSystem::WaitForJobCompletion(finalJobId);
+	int finalJobId = JobSystem::Schedule(exitJob, JobTime::Long, jobIds);
 
+	int currentJobs = JobSystem::GetInstance()->ActiveJobCount();
+	while (currentJobs != 0) {
+		for (size_t i = 0; i < 1000; i++)
+		{
+			JobSystem::ExecuteJob();
+		}
+		currentJobs = JobSystem::GetInstance()->ActiveJobCount();
+		std::cout << "Current remaining Jobs: " << currentJobs << std::endl;
+	}
+
+	JobSystem::WaitForJobCompletion(finalJobId);
 	jobIds.clear();
 	jobIds.reserve(0);
 
 	JobSystem::ReConfigure(1);
+}
 
+int main()
+{
+	cout << "Hello JobSystem." << endl;
+
+	JobSystem::ReConfigure();
+
+	/*JobSystem::Schedule([]() {
+		int currentJobs = JobSystem::GetInstance()->ActiveJobCount();
+		while (currentJobs != 0) {
+			for (size_t i = 0; i < 1000000; i++)
+			{
+				JobSystem::ExecuteJob();
+			}
+			currentJobs = JobSystem::GetInstance()->ActiveJobCount();
+			std::cout << "Current remaining Jobs: " << currentJobs << std::endl;
+		}
+		}, JobTime::Long);*/
+
+	std::vector<int> parallelJob = JobSystem::Schedule(0, 10000000000, 1000, JobTime::Medium, [](int index) {
+		for (size_t i = 0; i < 5000; i++)
+		{
+		}
+		});
+
+	test();
 	return 0;
 }

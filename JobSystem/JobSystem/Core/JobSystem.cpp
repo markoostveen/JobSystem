@@ -135,13 +135,13 @@ JobSystem* JbSystem::JobSystem::GetInstance()
 	return JobSystemSingleton;
 }
 
-size_t finishedJobs = 0;
+std::atomic<int> finishedJobs = 0;
 int JbSystem::JobSystem::ActiveJobCount()
 {
 	_jobsMutex.lock();
 	int jobCount = _scheduledJobs.size();
 	_jobsMutex.unlock();
-	std::cout << "Total jobs Finished: " << finishedJobs << std::endl;
+	std::cout << "Total remaining: " << jobCount << " Total jobs Finished: " << finishedJobs << std::endl;
 	return jobCount;
 }
 
