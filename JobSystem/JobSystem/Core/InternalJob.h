@@ -2,56 +2,58 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include <type_traits>
 
 namespace JbSystem {
-	enum class JobTime {
+	template<typename T>
+	concept JobFunction = std::is_convertible<T, std::function<void()>>::value;
+
+	template<typename T>
+	concept ParrallelJobFunction = std::is_convertible<T, std::function<void(int)>>::value;
+
+	enum class JobPriority {
 		/// <summary>
 		/// For your smallest jobs
 		/// </summary>
-		Short = 0,
+		High = 0,
 		/// <summary>
 		/// For jobs either depended on short jobs, or taking a little bit longer
 		/// </summary>
-		Medium = 1,
+		Normal = 1,
 		/// <summary>
 		/// For lengthy jobs, like loading files from places
 		/// </summary>
-		Long = 2
+		Low = 2
 	};
 
 	class InternalJobBase {
 	public:
 		const int GetId() const;
-		const JobTime GetTimeInvestment() const;
+		const JobPriority GetTimeInvestment() const;
 		virtual ~InternalJobBase() = default;
 		virtual void Run() = 0;
 
 	protected:
 		InternalJobBase() = delete;
-		InternalJobBase(JobTime length);
+		InternalJobBase(JobPriority length);
 		int _id;
-		JobTime _timeInvestment;
+		JobPriority _timeInvestment;
 	};
 
-	template<typename JobFunction>
+	template<JobFunction T>
 	class InternalJob : public InternalJobBase {
 	public:
-		InternalJob(JobFunction function, JobTime length) : InternalJobBase(length) {
-			_function = [function]() { function(); };
+		InternalJob(T function, JobPriority length) : InternalJobBase(length) {
+			_function = function;
 		}
 		InternalJob(const InternalJob&) = delete;
 		virtual ~InternalJob() = default;
 
-		void Run();
+		void Run() {
+			_function();
+		}
 
 	private:
 		std::function<void()> _function;
 	};
-
-	template<typename JobFunction>
-	inline void InternalJob<JobFunction>::Run()
-	{
-		//Check dependencies
-		_function();
-	}
 }

@@ -12,14 +12,14 @@ const int JbSystem::InternalJobBase::GetId() const
 	return _id;
 }
 
-const JobTime JbSystem::InternalJobBase::GetTimeInvestment() const
+const JobPriority JbSystem::InternalJobBase::GetTimeInvestment() const
 {
 	return _timeInvestment;
 }
 
 static std::atomic<int> Identifier; // Use atomic to ensure that value is only incremented once
 
-JbSystem::InternalJobBase::InternalJobBase(JobTime timeInvestment)
+JbSystem::InternalJobBase::InternalJobBase(JobPriority timeInvestment)
 {
 	_id = Identifier++;
 	_timeInvestment = timeInvestment;

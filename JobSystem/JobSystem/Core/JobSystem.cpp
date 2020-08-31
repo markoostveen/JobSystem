@@ -11,18 +11,12 @@ JobSystem* JobSystemSingleton = new JobSystem();
 JobSystem::~JobSystem()
 {
 	auto jobs = Shutdown();
-
-	//Delete all remaining jobs
-	for (size_t i = 0; i < jobs.size(); i++)
-	{
-		FinishJob(jobs[i]);
-	}
 }
 
 void JbSystem::JobSystem::Start(int threadCount)
 {
-	if (threadCount == 0) {
-		std::cout << "JobSystem cannot start with 0 workers" << std::endl;
+	if (threadCount <= 1) {
+		std::cout << "JobSystem cannot start with 0-1 workers" << std::endl;
 		return;
 	}
 
@@ -37,10 +31,7 @@ void JbSystem::JobSystem::Start(int threadCount)
 
 	// Grab last batch of jobs that were created in the time that lock was released in shutdown methon till now
 	auto lastBatchOfJobs = StealAllJobsFromWorkers();
-	for (int i = 0; i < lastBatchOfJobs.size(); i++)
-	{
-		jobs.push_back(lastBatchOfJobs[i]);
-	}
+	jobs.insert(jobs.begin(), lastBatchOfJobs.begin(), lastBatchOfJobs.end());
 
 	std::cout << "JobSystem is starting" << std::endl;
 
@@ -50,22 +41,19 @@ void JbSystem::JobSystem::Start(int threadCount)
 	for (int i = 0; i < _workerCount; i++)
 	{
 		// set callback function for worker threads to call the execute job on the job system
-		_workers.push_back(JobSystemWorker([this] { return StealJobFromWorker(); }, [this](InternalJobBase*& job) {FinishJob(job); }));
+		_workers.emplace_back([this] { return ExecuteJobFromWorker(); });
 	}
+
+	for (int i = 0; i < _workerCount; i++)
+	{
+		// set callback function for worker threads to call the execute job on the job system
+		_workers[i].Start();
+	}
+
 	_jobsMutex.unlock();
 
 	//Reschedule saved jobs
-	int rescheduleJob = Schedule([&]() {
-		std::unordered_set<int> jobIds;
-		for (size_t i = 0; i < jobs.size(); i++)
-		{
-			jobIds.insert(jobs[i]->GetId());
-		}
-		_jobsMutex.lock();
-		_scheduledJobs.reserve(jobs.size());
-		_scheduledJobs.insert(jobIds.begin(), jobIds.end());
-		_jobsMutex.unlock();
-
+	std::thread rescheduleJob = std::thread([&]() {
 		int iteration = 0;
 		while (iteration < jobs.size()) {
 			for (int i = 0; i < _workerCount && iteration < jobs.size(); i++)
@@ -74,43 +62,38 @@ void JbSystem::JobSystem::Start(int threadCount)
 				iteration++;
 			}
 		}
-		}, JobTime::Long);
-
-	for (int i = 0; i < _workerCount; i++)
-	{
-		// set callback function for worker threads to call the execute job on the job system
-		_workers[i].Start();
-	}
+		});
 
 	//wait for rescheduling to be done, then return the caller
-	WaitForJobCompletion(rescheduleJob);
+	rescheduleJob.join();
 	std::cout << "JobSystem started with " << threadCount << " workers!" << std::endl;
 }
 
 std::vector<InternalJobBase*> JbSystem::JobSystem::Shutdown()
 {
-	//Stop the worker thread after last iteration
+	//Wait for jobsystem to finish remaining jobs
+	int realScheduledJobs = 0;
+	while (realScheduledJobs > 0) {
+		realScheduledJobs = 0;
+		for (size_t i = 0; i < _workerCount; i++)
+		{
+			realScheduledJobs += _workers[i]._highPriorityTaskQueue.size();
+			realScheduledJobs += _workers[i]._normalPriorityTaskQueue.size();
+			realScheduledJobs += _workers[i]._lowPriorityTaskQueue.size();
+		}
+	}
+
+	//Let worker safely shutdown and complete it's last job
 	for (int i = 0; i < _workerCount; i++)
 	{
 		_workers[i].Active = false;
-	}
-
-	std::vector<InternalJobBase*> allJobs;
-	std::thread stealingJobsThread([&]() {allJobs = StealAllJobsFromWorkers(); });
-	for (int i = 0; i < _workerCount; i++)
-	{
 		_workers[i].WaitForShutdown();
 	}
 
 	_jobsMutex.lock();
-	stealingJobsThread.join();
 
 	//Get jobs finished while threads were stopping
-	auto lastBatchOfJobs = StealAllJobsFromWorkers();
-	for (int i = 0; i < lastBatchOfJobs.size(); i++)
-	{
-		allJobs.push_back(lastBatchOfJobs[i]);
-	}
+	std::vector<InternalJobBase*>allJobs = StealAllJobsFromWorkers();
 
 	_workerCount = 0;
 	_workers.clear();
@@ -119,15 +102,9 @@ std::vector<InternalJobBase*> JbSystem::JobSystem::Shutdown()
 	return allJobs;
 }
 
-void JbSystem::JobSystem::ExecuteJob()
+void JbSystem::JobSystem::ExecuteJob(JobPriority maxTimeInvestment)
 {
-	JobSystem* jobsystem = GetInstance();
-	InternalJobBase* job = jobsystem->StealJobFromWorker(JobTime::Medium);
-	if (job != nullptr)
-	{
-		job->Run();
-		jobsystem->FinishJob(job);
-	}
+	ExecuteJobFromWorker(maxTimeInvestment);
 }
 
 JobSystem* JbSystem::JobSystem::GetInstance()
@@ -135,17 +112,20 @@ JobSystem* JbSystem::JobSystem::GetInstance()
 	return JobSystemSingleton;
 }
 
-std::atomic<int> finishedJobs = 0;
+/// <summary>
+/// This reading is not very accurate as it only represents the scheduled jobs count and does not reflect what has already been completed
+/// </summary>
+/// <returns></returns>
 int JbSystem::JobSystem::ActiveJobCount()
 {
 	_jobsMutex.lock();
 	int jobCount = _scheduledJobs.size();
 	_jobsMutex.unlock();
-	std::cout << "Total remaining: " << jobCount << " Total jobs Finished: " << finishedJobs << std::endl;
+	std::cout << "Total remaining: " << jobCount << std::endl;
 	return jobCount;
 }
 
-int JbSystem::JobSystem::ScheduleJob(InternalJobBase* newjob)
+int JbSystem::JobSystem::Schedule(InternalJobBase* newjob)
 {
 	int jobId = newjob->GetId();
 
@@ -155,7 +135,8 @@ int JbSystem::JobSystem::ScheduleJob(InternalJobBase* newjob)
 
 		_jobsMutex.lock();
 		int worker = rand() % _workerCount;
-		_scheduledJobs.insert(jobId);
+		if (!_scheduledJobs.contains(jobId))
+			_scheduledJobs.insert(jobId);
 		_workers[worker].GiveJob(newjob);
 		_jobsMutex.unlock();
 
@@ -164,59 +145,184 @@ int JbSystem::JobSystem::ScheduleJob(InternalJobBase* newjob)
 		if (_schedulesTillMaintainance == 0) {
 			//std::cout << "Validating Jobsystem threads" << std::endl;
 			_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
-			Schedule([&]() {
-				for (size_t i = 0; i < _workerCount; i++)
-				{
-					if (!_workers[i].IsRunning() && _workers[i].Active == true)
-						_workers[i].Start();
-				}
-				}, JobTime::Short);
+			Schedule([&]() { Cleanup(); }, JobPriority::Normal);
 		}
 
 		return jobId;
 #ifdef DEBUG
 	}
 	else {
-		std::cout << "Jobsystem is not running, please start it explicitly. This job is not scheduled!" << std::endl;
-		_jobsMutex.lock();
-		_scheduledJobs.insert(jobId);
-		_jobsMutex.unlock();
-		FinishJob(newjob);
-		return jobId;
+		std::cout << "Jobsystem is not running, please start it explicitly. This job is now floating in the void!" << std::endl;
+		throw 1;
 	}
 #endif
 }
 
-void JbSystem::JobSystem::WaitForJobCompletion(int jobId)
+int JbSystem::JobSystem::ScheduleFutureJob(InternalJobBase* newFutureJob)
 {
-	JobSystem* jobSystem = GetInstance();
+	int jobId = newFutureJob->GetId();
+	_jobsMutex.lock();
+	_scheduledJobs.insert(jobId);
+	_jobsMutex.unlock();
+	return jobId;
+}
 
-	jobSystem->_jobsMutex.lock();
-	bool jobFinished = !jobSystem->_scheduledJobs.contains(jobId);
-	jobSystem->_jobsMutex.unlock();
+std::vector<int> JbSystem::JobSystem::BatchScheduleJob(std::vector<InternalJobBase*> newjobs, JobPriority durationOfEveryJob)
+{
+#ifdef DEBUG
+	if (_workerCount != 0) {
+#endif
+		std::vector<int> jobIds = BatchScheduleFutureJob(newjobs);
+
+		_jobsMutex.lock();
+		_scheduledJobs.insert(jobIds.begin(), jobIds.end());
+		_jobsMutex.unlock();
+
+		for (size_t i = 0; i < newjobs.size(); i++)
+		{
+			int worker = rand() % _workerCount;
+			_workers[worker].GiveJob(newjobs[i]);
+
+			// Make sure that all workers are still running correctly
+			_schedulesTillMaintainance--;
+			if (_schedulesTillMaintainance == 0) {
+				//std::cout << "Validating Jobsystem threads" << std::endl;
+				_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
+				Schedule([&]() { Cleanup(); }, JobPriority::Normal);
+			}
+		}
+
+		return jobIds;
+
+#ifdef DEBUG
+	}
+	else {
+		std::cout << "Jobsystem is not running, please start it explicitly. This job is now floating in the void!" << std::endl;
+		throw 1;
+	}
+#endif
+}
+
+std::vector<int> JbSystem::JobSystem::BatchScheduleFutureJob(std::vector<InternalJobBase*> newjobs)
+{
+	std::vector<int> jobIds;
+	int totalAmountOfJobs = newjobs.size();
+	jobIds.reserve(totalAmountOfJobs);
+
+	for (size_t i = 0; i < totalAmountOfJobs; i++)
+	{
+		jobIds.emplace_back(newjobs[i]->GetId());
+	}
+
+	_jobsMutex.lock();
+	for (int i = 0; i < totalAmountOfJobs; i++)
+	{
+		int jobId = jobIds[i];
+		if (!_scheduledJobs.contains(jobId))
+			_scheduledJobs.emplace(jobId);
+	}
+	_jobsMutex.unlock();
+	return jobIds;
+}
+
+bool JbSystem::JobSystem::WaitForJobCompletion(int jobId, bool helpExecutingOtherJobs, int maxMicroSecondsToWait)
+{
+	bool jobFinished = IsJobCompleted(jobId);
+
+	std::chrono::time_point start = std::chrono::steady_clock::now();
+
+	int minimalWait = 100;
+	if (!helpExecutingOtherJobs)
+		minimalWait = 0;
 
 	while (!jobFinished) {
-		ExecuteJob();// use resources to aid workers instead of sleeping
+		if (helpExecutingOtherJobs)
+			ExecuteJob();// use resources to aid workers instead of sleeping
 
-		jobSystem->_jobsMutex.lock();
-		jobFinished = !jobSystem->_scheduledJobs.contains(jobId);
-		jobSystem->_jobsMutex.unlock();
+		int passedMicroSeconds = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+
+		if (passedMicroSeconds < maxMicroSecondsToWait)
+			continue;
+
+		for (size_t i = 0; i < _workerCount; i++)
+		{
+			// check if a worker has finished the job
+			if (_workers[i].IsJobFinished(jobId)) {
+				return true;
+			}
+		}
+		_jobsMutex.lock();
+		jobFinished = !_scheduledJobs.contains(jobId);
+		_jobsMutex.unlock();
+
+		if (maxMicroSecondsToWait == 0)
+			start = std::chrono::steady_clock::now();
+		else if (passedMicroSeconds > maxMicroSecondsToWait && !jobFinished)
+			return false;
+	}
+
+	return true;
+}
+
+void JbSystem::JobSystem::WaitForJobCompletion(std::vector<int>& jobIds)
+{
+	bool finished = false;
+	auto waitLambda = [&finished]() {finished = true; };
+	WaitForJobCompletion(jobIds, waitLambda);
+	while (!finished) { ExecuteJob(JobPriority::High); }
+}
+
+void JbSystem::JobSystem::ExecuteJobFromWorker(JobPriority maxTimeInvestment)
+{
+	int worker = rand() % _workerCount;
+	InternalJobBase* job = _workers[worker].TryTakeJob(maxTimeInvestment);
+	if (job != nullptr)
+	{
+		job->Run();
+		_workers[worker].FinishJob(job);
 	}
 }
 
-InternalJobBase* JbSystem::JobSystem::StealJobFromWorker(JobTime maxTimeInvestment)
+bool JbSystem::JobSystem::IsJobCompleted(int& jobId)
 {
-	int worker = rand() % _workerCount;
-	return _workers[worker].TryTakeJob(maxTimeInvestment);
+	bool finished = true;
+	for (size_t i = 0; i < _workerCount; i++)
+	{
+		// check if a worker has finished the job
+		finished = _workers[i].IsJobFinished(jobId);
+		if (finished) {
+			return true;
+		}
+	}
+	_jobsMutex.lock();
+	bool contains = !_scheduledJobs.contains(jobId);
+	_jobsMutex.unlock();
+	return contains;
 }
 
-void JbSystem::JobSystem::FinishJob(InternalJobBase*& job)
+void JbSystem::JobSystem::Cleanup()
 {
+	//remove deleted jobs
 	_jobsMutex.lock();
-	_scheduledJobs.erase(job->GetId());
+	for (int i = 0; i < _workerCount; i++)
+	{
+		JobSystemWorker& worker = _workers[i];
+		worker._completedJobsMutex.lock();
+		for (auto it = worker._completedJobs.begin(); it != worker._completedJobs.end(); it++)
+		{
+			int jobId = *it;
+			_scheduledJobs.erase(jobId);
+		}
+		worker._completedJobs.clear();
+		worker._completedJobsMutex.unlock();
+	}
 	_jobsMutex.unlock();
-	delete job;
-	finishedJobs++;
+
+	for (size_t i = 0; i < _workerCount; i++)
+	{
+		if (!_workers[i].IsRunning() && _workers[i].Active == true)
+			_workers[i].Start();
+	}
 }
 
 std::vector<InternalJobBase*> JbSystem::JobSystem::StealAllJobsFromWorkers()

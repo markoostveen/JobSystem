@@ -6,130 +6,206 @@
 using namespace std;
 using namespace JbSystem;
 
-void test() {
-	const int totalIterations = 5000;
+void TestJobSystem(JobSystem*& jobSystem) {
+	std::chrono::high_resolution_clock::time_point start;
+	std::chrono::high_resolution_clock::time_point end;
 
-	std::vector<int> jobIds;
-	jobIds.reserve(totalIterations);
+	start = std::chrono::high_resolution_clock::now();
 
-	JobSystem::ReConfigure(15);
+	auto job1 = []() {
+		int x = 0;
+		for (size_t i = 0; i < 500; i++)
+		{
+			x++;
+		}
+	};
 
-	for (size_t i = 0; i < totalIterations; i++)
-	{
-		auto job1 = []() {
+	auto job2 = [jobSystem]() {
+		std::vector<int> parallelJob = jobSystem->Schedule(0, 1000, 100, JobPriority::High, [](int index) {
+			for (size_t i = 0; i < 100000; i++)
+			{
+			}
+			});
+
+		constexpr auto waitJob = []() { /*std::cout << "All parallelJobs finished ";*/ };
+		jobSystem->WaitForJobCompletion(parallelJob, waitJob);
+	};
+
+	auto job3 = []() {
+		for (size_t i = 0; i < 50; i++)
+		{
 			int x = 0;
-			for (size_t i = 0; i < 50000; i++)
+			for (size_t y = 0; y < 5000; y++)
 			{
 				x++;
 			}
-		};
+		}
+	};
 
-		auto job2 = []() {
-			for (size_t i = 0; i < 50; i++)
-			{
-				int x = 0;
-				for (size_t y = 0; y < 500000; y++)
-				{
-					x++;
-				}
+	auto job4 = []() {
+		for (size_t i = 0; i < 500; i++)
+		{
+		}
+	};
 
-				for (size_t i = 0; i < 100; i++)
-				{
-					JobSystem::Schedule([] {
-						int x = 0;
-						for (size_t i = 0; i < 1000; i++)
-						{
-							x++;
-						}
-						}, JobTime::Short);
-				}
-			}
-		};
+	std::vector<int> job1Id = jobSystem->Schedule(1000, 5, JobPriority::High, job1);
+	int job2Id = jobSystem->Schedule(job2, JobPriority::Low);
+	int job3Id = jobSystem->Schedule(job3, JobPriority::Normal, job2Id);
+	job1Id.push_back(job3Id);
+	int job4Id = jobSystem->Schedule(job4, JobPriority::Low, job1Id);
+	while (!jobSystem->WaitForJobCompletion(job4Id)) {}
 
-		auto job3 = []() {
-			for (size_t i = 0; i < 50; i++)
-			{
-				int x = 0;
-				for (size_t y = 0; y < 5000; y++)
-				{
-					x++;
-				}
-			}
-		};
+	end = std::chrono::high_resolution_clock::now();
+	std::cout << "Jobsystem took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms ";
+}
 
-		auto job4 = []() {
-			for (size_t i = 0; i < 500; i++)
-			{
-				int x = 0;
-				for (size_t y = 0; y < 5000; y++)
-				{
-					x++;
-				}
-			}
-		};
+void TestNormal() {
+	std::chrono::high_resolution_clock::time_point start;
+	std::chrono::high_resolution_clock::time_point end;
 
-		int job1Id = JobSystem::Schedule(job1, JobTime::Short);
-		int job2Id = JobSystem::Schedule(job2, JobTime::Long, job1Id);
-		int job3Id = JobSystem::Schedule(job3, JobTime::Medium, job1Id);
-		int job4Id = JobSystem::Schedule(job4, JobTime::Long, job3Id);
-		jobIds.push_back(job2Id);
+	start = std::chrono::high_resolution_clock::now();
+
+	for (size_t i = 0; i < 1000; i++)
+	{
+		int x = 0;
+		for (size_t i = 0; i < 500; i++)
+		{
+			x++;
+		}
 	}
 
-	std::this_thread::sleep_for(std::chrono::seconds(5));
-	JobSystem::ReConfigure(1);
-	std::this_thread::sleep_for(std::chrono::seconds(5));
-	JobSystem::ReConfigure(8);
-	std::this_thread::sleep_for(std::chrono::seconds(5));
-	JobSystem::ReConfigure(31);
-	std::this_thread::sleep_for(std::chrono::seconds(5));
-	JobSystem::ReConfigure();
+	for (int i = 0; i < 1000; i++)
+	{
+		for (size_t i = 0; i < 100000; i++)
+		{
+		}
+	}
+
+	for (size_t i = 0; i < 50; i++)
+	{
+		int x = 0;
+		for (size_t y = 0; y < 5000; y++)
+		{
+			x++;
+		}
+	}
+
+	for (size_t i = 0; i < 500; i++)
+	{
+	}
+
+	end = std::chrono::high_resolution_clock::now();
+	std::cout << "Normal took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
+}
+
+void InsertManySmallJobs(JobSystem*& jobSystem) {
+	constexpr auto testLambda = []() {};
+
+	int job1Id = jobSystem->Schedule(testLambda, JobPriority::High);
+
+	jobSystem->Schedule(0, 1000000, 1000, JobPriority::Normal, [](int index) {
+		for (size_t i = 0; i < 3000; i++)
+		{
+		}
+		}, job1Id);
+
+	std::vector<int> parallelJob = jobSystem->Schedule(0, 1000000, 1000, JobPriority::High, [](int index) {
+		for (size_t i = 0; i < 5000; i++)
+		{
+		}
+		});
+
+	vector<int> jobIds = jobSystem->Schedule(0, 1000000, 1000, JobPriority::Low, [](int index) {
+		for (size_t i = 0; i < 2000; i++)
+		{
+		}
+		}, parallelJob);
+
+	jobSystem->WaitForJobCompletion(jobIds);
+}
+
+void test(JobSystem* jobSystem, bool insertRandomJobs) {
+	jobSystem->ReConfigure();
+
+	const int totalIterations = 20;
+	vector<int> jobIds;
+	jobIds.reserve(totalIterations);
+	std::chrono::high_resolution_clock::time_point start;
+	std::chrono::high_resolution_clock::time_point end;
+
+	if (insertRandomJobs)
+		InsertManySmallJobs(jobSystem);
+
+	jobSystem->ReConfigure(2);
+	for (size_t i = 0; i < totalIterations; i++)
+	{
+		TestJobSystem(jobSystem);
+		TestNormal();
+	}
+
+	if (insertRandomJobs)
+		InsertManySmallJobs(jobSystem);
+
+	jobSystem->ReConfigure(8);
+	for (size_t i = 0; i < totalIterations; i++)
+	{
+		TestJobSystem(jobSystem);
+		TestNormal();
+	}
+
+	if (insertRandomJobs)
+		InsertManySmallJobs(jobSystem);
+
+	jobSystem->ReConfigure(31);
+	for (size_t i = 0; i < totalIterations; i++)
+	{
+		TestJobSystem(jobSystem);
+		TestNormal();
+	}
+
+	jobSystem->ReConfigure();
+	for (size_t i = 0; i < totalIterations; i++)
+	{
+		TestJobSystem(jobSystem);
+		TestNormal();
+	}
 
 	auto exitJob = []() {
 		std::cout << "All Jobs completed" << std::endl;
 	};
-	int finalJobId = JobSystem::Schedule(exitJob, JobTime::Long, jobIds);
 
-	int currentJobs = JobSystem::GetInstance()->ActiveJobCount();
-	while (currentJobs != 0) {
-		for (size_t i = 0; i < 1000; i++)
-		{
-			JobSystem::ExecuteJob();
-		}
-		currentJobs = JobSystem::GetInstance()->ActiveJobCount();
-		std::cout << "Current remaining Jobs: " << currentJobs << std::endl;
-	}
+	//test if jobsystem, can handle a task with zero dependencies
+	int finalJobId = jobSystem->Schedule(exitJob, JobPriority::Low, jobIds);
 
-	JobSystem::WaitForJobCompletion(finalJobId);
+	jobSystem->WaitForJobCompletion(finalJobId);
 	jobIds.clear();
 	jobIds.reserve(0);
 
-	JobSystem::ReConfigure(1);
+	if (insertRandomJobs)
+		InsertManySmallJobs(jobSystem);
+
+	jobSystem->ReConfigure(2);
+	for (size_t i = 0; i < totalIterations; i++)
+	{
+		TestJobSystem(jobSystem);
+		TestNormal();
+	}
 }
 
 int main()
 {
 	cout << "Hello JobSystem." << endl;
 
-	JobSystem::ReConfigure();
+	bool insertRandomJobs = false;
 
-	/*JobSystem::Schedule([]() {
-		int currentJobs = JobSystem::GetInstance()->ActiveJobCount();
-		while (currentJobs != 0) {
-			for (size_t i = 0; i < 1000000; i++)
-			{
-				JobSystem::ExecuteJob();
-			}
-			currentJobs = JobSystem::GetInstance()->ActiveJobCount();
-			std::cout << "Current remaining Jobs: " << currentJobs << std::endl;
-		}
-		}, JobTime::Long);*/
+	JobSystem* custom = new JobSystem();
+	test(custom, insertRandomJobs);
+	custom->ReConfigure();
+	delete custom;
 
-	std::vector<int> parallelJob = JobSystem::Schedule(0, 10000000000, 1000, JobTime::Medium, [](int index) {
-		for (size_t i = 0; i < 5000; i++)
-		{
-		}
-		});
+	test(JobSystem::GetInstance(), insertRandomJobs);
 
-	test();
+	std::this_thread::sleep_for(std::chrono::seconds(5));
+
 	return 0;
 }

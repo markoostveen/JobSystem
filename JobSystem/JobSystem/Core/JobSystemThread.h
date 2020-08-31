@@ -5,15 +5,17 @@
 #include <functional>
 #include <queue>
 #include <mutex>
+#include <unordered_set>
 
 namespace JbSystem {
 	class JobSystemWorker {
-		using StealFunction = std::function<InternalJobBase* ()>;
-		using FinishJobFunction = std::function<void(InternalJobBase*&)>;
+		using executeExternalFunction = std::function<void()>;
+
+		friend class JobSystem;
 
 	public:
-		JobSystemWorker(StealFunction stealJobFunction, FinishJobFunction finishJobFunction);
-		JobSystemWorker(JobSystemWorker& worker);
+		JobSystemWorker(executeExternalFunction executeExternalJobFunction);
+		JobSystemWorker(const JobSystemWorker& worker);
 		~JobSystemWorker();
 
 		/// <summary>
@@ -25,21 +27,31 @@ namespace JbSystem {
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
 
-		InternalJobBase* TryTakeJob(JobTime maxTimeInvestment = JobTime::Long);
+		InternalJobBase* TryTakeJob(JobPriority maxTimeInvestment = JobPriority::High);
 		void GiveJob(InternalJobBase*& newJob);
+
+		/// <summary>
+		/// Finishes job and cleans up after
+		/// </summary>
+		/// <param name="job"></param>
+		void FinishJob(InternalJobBase*& job);
+
+		bool IsJobFinished(int& jobId);
 
 		//Is the read suppost to be active
 		bool Active;
 	private:
 		void ThreadLoop();
 
-		StealFunction _stealJobFunction;
-		FinishJobFunction _finishJobFunction;
+		executeExternalFunction _executeExternalJobFunction;
 
 		std::mutex _queueMutex;
-		std::queue<InternalJobBase*> _shortTaskQueue;
-		std::queue<InternalJobBase*> _mediumTaskQueue;
-		std::queue<InternalJobBase*> _longTaskQueue;
+		std::queue<InternalJobBase*> _highPriorityTaskQueue;
+		std::queue<InternalJobBase*> _normalPriorityTaskQueue;
+		std::queue<InternalJobBase*> _lowPriorityTaskQueue;
+
+		std::mutex _completedJobsMutex;
+		std::unordered_set<int> _completedJobs;
 
 		std::mutex _isRunningMutex;
 		std::condition_variable _isRunningConditionalVariable;

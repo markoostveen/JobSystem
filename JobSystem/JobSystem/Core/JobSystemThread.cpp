@@ -13,25 +13,22 @@ void JobSystemWorker::ThreadLoop() {
 	int noJobCount = 0;
 
 	while (Active) {
-		if (noJobCount > 2000)
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		if (noJobCount > 20000) {
+			std::this_thread::sleep_for(std::chrono::microseconds(100));
+			noJobCount = 0;
+		}
 
 		InternalJobBase* job;
 
 		job = TryTakeJob();
 		if (job != nullptr) {
 			job->Run();
-			_finishJobFunction(job);
+			FinishJob(job);
 			noJobCount = 0;
 			continue;
 		}
 
-		job = _stealJobFunction();
-		if (job != nullptr) {
-			job->Run();
-			_finishJobFunction(job);
-			continue;
-		}
+		_executeExternalJobFunction();
 
 		noJobCount++;
 	}
@@ -40,40 +37,19 @@ void JobSystemWorker::ThreadLoop() {
 	//std::cout << "Worker has exited!" << std::endl;
 }
 
-JobSystemWorker::JobSystemWorker(StealFunction stealJobFunction, FinishJobFunction finishJobFunction)
+JobSystemWorker::JobSystemWorker(executeExternalFunction executeExternalJobFunction)
 {
-	_stealJobFunction = stealJobFunction;
-	_finishJobFunction = finishJobFunction;
+	_executeExternalJobFunction = executeExternalJobFunction;
 	Active = false;
 }
 
-JbSystem::JobSystemWorker::JobSystemWorker(JobSystemWorker& worker)
+JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
 {
-	_stealJobFunction = worker._stealJobFunction;
-	_finishJobFunction = worker._finishJobFunction;
-	Active = worker.Active;
-	worker.Active = false;
-	std::lock_guard workerLock(worker._queueMutex);
-	for (size_t i = 0; i < worker._longTaskQueue.size(); i++)
-	{
-		InternalJobBase* job = worker._longTaskQueue.front();
-		worker._longTaskQueue.pop();
-		_longTaskQueue.emplace(job);
-	}
-
-	for (size_t i = 0; i < worker._mediumTaskQueue.size(); i++)
-	{
-		InternalJobBase* job = worker._mediumTaskQueue.front();
-		worker._mediumTaskQueue.pop();
-		_mediumTaskQueue.emplace(job);
-	}
-
-	for (size_t i = 0; i < worker._shortTaskQueue.size(); i++)
-	{
-		InternalJobBase* job = worker._shortTaskQueue.front();
-		worker._shortTaskQueue.pop();
-		_shortTaskQueue.emplace(job);
-	}
+	_executeExternalJobFunction = worker._executeExternalJobFunction;
+	_lowPriorityTaskQueue = worker._lowPriorityTaskQueue;
+	_normalPriorityTaskQueue = worker._normalPriorityTaskQueue;
+	_highPriorityTaskQueue = worker._highPriorityTaskQueue;
+	Active = false;
 }
 
 JbSystem::JobSystemWorker::~JobSystemWorker()
@@ -110,39 +86,60 @@ void JobSystemWorker::Start()
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
-InternalJobBase* JbSystem::JobSystemWorker::TryTakeJob(JobTime maxTimeInvestment)
+InternalJobBase* JbSystem::JobSystemWorker::TryTakeJob(JobPriority maxTimeInvestment)
 {
 	//Return a result based on weight of a job
 
-	std::lock_guard lock(_queueMutex);
-	if (!_shortTaskQueue.empty() && maxTimeInvestment >= JobTime::Short) {
-		auto value = _shortTaskQueue.front();
-		_shortTaskQueue.pop();
+	_queueMutex.lock();
+	if (!_highPriorityTaskQueue.empty() && maxTimeInvestment >= JobPriority::High) {
+		auto value = _highPriorityTaskQueue.front();
+		_highPriorityTaskQueue.pop();
+		_queueMutex.unlock();
 		return value;
 	}
-	else if (!_mediumTaskQueue.empty() && maxTimeInvestment >= JobTime::Medium) {
-		auto value = _mediumTaskQueue.front();
-		_mediumTaskQueue.pop();
+	else if (!_normalPriorityTaskQueue.empty() && maxTimeInvestment >= JobPriority::Normal) {
+		auto value = _normalPriorityTaskQueue.front();
+		_normalPriorityTaskQueue.pop();
+		_queueMutex.unlock();
 		return value;
 	}
-	else if (!_longTaskQueue.empty() && maxTimeInvestment >= JobTime::Long) {
-		auto value = _longTaskQueue.front();
-		_longTaskQueue.pop();
+	else if (!_lowPriorityTaskQueue.empty() && maxTimeInvestment >= JobPriority::Low) {
+		auto value = _lowPriorityTaskQueue.front();
+		_lowPriorityTaskQueue.pop();
+		_queueMutex.unlock();
 		return value;
 	}
 
+	_queueMutex.unlock();
 	return nullptr;
 }
 
 void JbSystem::JobSystemWorker::GiveJob(InternalJobBase*& newJob)
 {
-	JobTime timeInvestment = newJob->GetTimeInvestment();
+	JobPriority timeInvestment = newJob->GetTimeInvestment();
 
-	std::lock_guard lock(_queueMutex);
-	if (timeInvestment == JobTime::Short)
-		_shortTaskQueue.emplace(newJob);
-	else if (timeInvestment == JobTime::Medium)
-		_mediumTaskQueue.emplace(newJob);
+	_queueMutex.lock();
+	if (timeInvestment == JobPriority::High)
+		_highPriorityTaskQueue.emplace(newJob);
+	else if (timeInvestment == JobPriority::Normal)
+		_normalPriorityTaskQueue.emplace(newJob);
 	else
-		_longTaskQueue.emplace(newJob);
+		_lowPriorityTaskQueue.emplace(newJob);
+	_queueMutex.unlock();
+}
+
+void JbSystem::JobSystemWorker::FinishJob(InternalJobBase*& job)
+{
+	_completedJobsMutex.lock();
+	_completedJobs.emplace(job->GetId());
+	_completedJobsMutex.unlock();
+	delete job;
+}
+
+bool JbSystem::JobSystemWorker::IsJobFinished(int& jobId)
+{
+	_completedJobsMutex.lock();
+	bool contains = _completedJobs.contains(jobId);
+	_completedJobsMutex.unlock();
+	return contains;
 }
