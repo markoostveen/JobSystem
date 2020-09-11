@@ -12,25 +12,23 @@ void JobSystemWorker::ThreadLoop() {
 
 	int noJobCount = 0;
 
+	Job* job;
+
 	while (Active) {
-		if (noJobCount > 20000) {
-			std::this_thread::sleep_for(std::chrono::microseconds(100));
-			noJobCount = 0;
-		}
-
-		InternalJobBase* job;
-
 		job = TryTakeJob();
 		if (job != nullptr) {
+			noJobCount = 0;
 			job->Run();
 			FinishJob(job);
-			noJobCount = 0;
 			continue;
 		}
 
-		_executeExternalJobFunction();
-
 		noJobCount++;
+		if (noJobCount > 20000) {
+			std::this_thread::sleep_for(std::chrono::microseconds(250));
+		}
+
+		_executeExternalJobFunction();
 	}
 
 	_isRunningConditionalVariable.notify_all();
@@ -55,7 +53,7 @@ JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
 JbSystem::JobSystemWorker::~JobSystemWorker()
 {
 	// free memory of all queued jobs in this worker object
-	InternalJobBase* currentJob = TryTakeJob();
+	Job* currentJob = TryTakeJob();
 	while (currentJob != nullptr) {
 		delete currentJob;
 		currentJob = TryTakeJob();
@@ -86,7 +84,7 @@ void JobSystemWorker::Start()
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
-InternalJobBase* JbSystem::JobSystemWorker::TryTakeJob(JobPriority maxTimeInvestment)
+Job* JbSystem::JobSystemWorker::TryTakeJob(JobPriority maxTimeInvestment)
 {
 	//Return a result based on weight of a job
 
@@ -114,7 +112,7 @@ InternalJobBase* JbSystem::JobSystemWorker::TryTakeJob(JobPriority maxTimeInvest
 	return nullptr;
 }
 
-void JbSystem::JobSystemWorker::GiveJob(InternalJobBase*& newJob)
+void JbSystem::JobSystemWorker::GiveJob(Job*& newJob)
 {
 	JobPriority timeInvestment = newJob->GetTimeInvestment();
 
@@ -128,7 +126,7 @@ void JbSystem::JobSystemWorker::GiveJob(InternalJobBase*& newJob)
 	_queueMutex.unlock();
 }
 
-void JbSystem::JobSystemWorker::FinishJob(InternalJobBase*& job)
+void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
 	_completedJobsMutex.lock();
 	_completedJobs.emplace(job->GetId());

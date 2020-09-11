@@ -26,34 +26,22 @@ namespace JbSystem {
 		Low = 2
 	};
 
-	class InternalJobBase {
+	class Job {
 	public:
-		const int GetId() const;
-		const JobPriority GetTimeInvestment() const;
-		virtual ~InternalJobBase() = default;
-		virtual void Run() = 0;
-
-	protected:
-		InternalJobBase() = delete;
-		InternalJobBase(JobPriority length);
-		int _id;
-		JobPriority _timeInvestment;
-	};
-
-	template<JobFunction T>
-	class InternalJob : public InternalJobBase {
-	public:
-		InternalJob(T function, JobPriority length) : InternalJobBase(length) {
+		Job() = delete;
+		template<JobFunction T>
+		Job(const T function, const JobPriority length) :Job(length) {
 			_function = function;
 		}
-		InternalJob(const InternalJob&) = delete;
-		virtual ~InternalJob() = default;
 
-		void Run() {
-			_function();
-		}
+		const int GetId() const;
+		const JobPriority GetTimeInvestment() const;
+		void Run() const;
 
 	private:
+		Job(JobPriority length);
+		const int _id;
+		const JobPriority _timeInvestment;
 		std::function<void()> _function;
 	};
 }

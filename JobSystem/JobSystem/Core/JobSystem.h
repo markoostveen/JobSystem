@@ -32,7 +32,7 @@ namespace JbSystem {
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		int Schedule(InternalJobBase* newjob);
+		int Schedule(Job* newjob);
 
 		//Single function
 		template<JobFunction T>
@@ -98,7 +98,7 @@ namespace JbSystem {
 		/// Shutdown all worker threads
 		/// </summary>
 		/// <returns> vector of all remaining jobs </returns>
-		std::vector<InternalJobBase*> Shutdown();
+		std::vector<Job*> Shutdown();
 
 		/// <summary>
 		/// Start or Restart the jobsystem, with the desired amount of workers
@@ -106,9 +106,9 @@ namespace JbSystem {
 		/// </summary>
 		/// <param name="threadCount"></param>
 		void Start(int threadCount = std::thread::hardware_concurrency() - 1);
-		int ScheduleFutureJob(InternalJobBase* newFutureJob);
-		std::vector<int> BatchScheduleJob(std::vector<InternalJobBase*> newjobs, JobPriority durationOfEveryJob);
-		std::vector<int> BatchScheduleFutureJob(std::vector<InternalJobBase*> newjobs);
+		int ScheduleFutureJob(Job* newFutureJob);
+		std::vector<int> BatchScheduleJob(std::vector<Job*> newjobs, JobPriority durationOfEveryJob);
+		std::vector<int> BatchScheduleFutureJob(std::vector<Job*> newjobs);
 
 		void ExecuteJobFromWorker(JobPriority maxTimeInvestment = JobPriority::Low);
 
@@ -120,7 +120,7 @@ namespace JbSystem {
 		/// Take all scheduled jobs from all workers
 		/// </summary>
 		/// <returns></returns>
-		std::vector<InternalJobBase*> StealAllJobsFromWorkers();
+		std::vector<Job*> StealAllJobsFromWorkers();
 
 		std::mutex _jobsMutex;
 		std::unordered_set<int> _scheduledJobs;
@@ -138,13 +138,13 @@ namespace JbSystem {
 	template<JobFunction T>
 	inline int JobSystem::Schedule(T function, JobPriority priority)
 	{
-		return Schedule(new InternalJob(function, priority));
+		return Schedule(new Job(function, priority));
 	}
 
 	template<JobFunction T, typename ...JobId>
 	inline int JobSystem::Schedule(T function, JobPriority timeInvestment, JobId... dependencies)
 	{
-		InternalJob<T>* newJob = new InternalJob(function, timeInvestment);
+		Job* newJob = new Job(function, timeInvestment);
 
 		const std::vector<int> dependencyArray = { dependencies ... };
 
@@ -161,7 +161,7 @@ namespace JbSystem {
 			return Schedule(function, timeInvestment);
 		}
 
-		InternalJob<T>* newJob = new InternalJob(function, timeInvestment);
+		Job* newJob = new Job(function, timeInvestment);
 
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
 		int jobId = ScheduleFutureJob(newJob);
@@ -172,14 +172,14 @@ namespace JbSystem {
 	template<JobFunction T>
 	inline std::vector<int> JobSystem::Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function)
 	{
-		std::vector<InternalJobBase*> jobs;
+		std::vector<Job*> jobs;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
 		int CurrentBatchEnd = totalIterations;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
-			jobs.push_back(new InternalJob(
+			jobs.push_back(new Job(
 				[function, jobStartIndex = totalIterations - ((totalBatches + 1) * batchSize), jobEndIndex = totalIterations - (totalBatches * batchSize)](){
 				for (int i = jobStartIndex; i < jobEndIndex; i++)
 				{
@@ -190,7 +190,7 @@ namespace JbSystem {
 		}
 
 		//Create last job
-		jobs.push_back(new InternalJob(
+		jobs.push_back(new Job(
 			[function, jobStartIndex = 0, jobEndIndex = totalIterations - (totalBatches * batchSize)](){
 			for (int i = jobStartIndex; i < jobEndIndex; i++)
 			{
@@ -204,14 +204,14 @@ namespace JbSystem {
 	template<JobFunction T, typename ...JobId>
 	inline std::vector<int> JobSystem::Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function, JobId ...dependencies)
 	{
-		std::vector<InternalJobBase*> jobs;
+		std::vector<Job*> jobs;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
 		int CurrentBatchEnd = totalIterations;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
-			jobs.push_back(new InternalJob(
+			jobs.push_back(new Job(
 				[function, jobStartIndex = totalIterations - ((totalBatches + 1) * batchSize), jobEndIndex = totalIterations - (totalBatches * batchSize)](){
 				for (int i = jobStartIndex; i < jobEndIndex; i++)
 				{
@@ -222,7 +222,7 @@ namespace JbSystem {
 		}
 
 		//Create last job
-		jobs.push_back(new InternalJob(
+		jobs.push_back(new Job(
 			[function, jobStartIndex = 0, jobEndIndex = totalIterations - (totalBatches * batchSize)](){
 			for (int i = jobStartIndex; i < jobEndIndex; i++)
 			{
@@ -245,14 +245,14 @@ namespace JbSystem {
 			return Schedule(totalIterations, batchSize, timeInvestment, function);
 		}
 
-		std::vector<InternalJobBase*> jobs;
+		std::vector<Job*> jobs;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
 		int CurrentBatchEnd = totalIterations;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
-			jobs.push_back(new InternalJob(
+			jobs.push_back(new Job(
 				[function, jobStartIndex = totalIterations - ((totalBatches + 1) * batchSize), jobEndIndex = totalIterations - (totalBatches * batchSize)](){
 				for (int i = jobStartIndex; i < jobEndIndex; i++)
 				{
@@ -263,7 +263,7 @@ namespace JbSystem {
 		}
 
 		//Create last job
-		jobs.push_back(new InternalJob(
+		jobs.push_back(new Job(
 			[function, jobStartIndex = 0, jobEndIndex = totalIterations - (totalBatches * batchSize)](){
 			for (int i = jobStartIndex; i < jobEndIndex; i++)
 			{
@@ -280,7 +280,7 @@ namespace JbSystem {
 	template<ParrallelJobFunction T>
 	inline std::vector<int> JobSystem::Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function)
 	{
-		std::vector<InternalJobBase*> jobs;
+		std::vector<Job*> jobs;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
@@ -288,7 +288,7 @@ namespace JbSystem {
 		int CurrentBatchEnd = endOfRange;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
-			jobs.push_back(new InternalJob(
+			jobs.push_back(new Job(
 				[function, jobStartIndex = endOfRange - ((totalBatches + 1) * batchSize), jobEndIndex = endOfRange - (totalBatches * batchSize)](){
 				for (int i = jobStartIndex; i < jobEndIndex; i++)
 				{
@@ -299,7 +299,7 @@ namespace JbSystem {
 		}
 
 		//Create last job
-		jobs.push_back(new InternalJob(
+		jobs.push_back(new Job(
 			[function, jobStartIndex = 0, jobEndIndex = endOfRange - (totalBatches * batchSize)](){
 			for (int i = jobStartIndex; i < jobEndIndex; i++)
 			{
@@ -312,7 +312,7 @@ namespace JbSystem {
 	template<ParrallelJobFunction T, typename ...JobId>
 	inline std::vector<int> JobSystem::Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function, JobId ... dependencies)
 	{
-		std::vector<InternalJobBase*> jobs;
+		std::vector<Job*> jobs;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
@@ -320,7 +320,7 @@ namespace JbSystem {
 		int CurrentBatchEnd = endOfRange;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
-			jobs.push_back(new InternalJob(
+			jobs.push_back(new Job(
 				[function, jobStartIndex = endOfRange - ((totalBatches + 1) * batchSize), jobEndIndex = endOfRange - (totalBatches * batchSize)](){
 				for (int i = jobStartIndex; i < jobEndIndex; i++)
 				{
@@ -331,7 +331,7 @@ namespace JbSystem {
 		}
 
 		//Create last job
-		jobs.push_back(new InternalJob(
+		jobs.push_back(new Job(
 			[function, jobStartIndex = 0, jobEndIndex = endOfRange - (totalBatches * batchSize)](){
 			for (int i = jobStartIndex; i < jobEndIndex; i++)
 			{
@@ -353,7 +353,7 @@ namespace JbSystem {
 			return Schedule(startIndex, endIndex, batchSize, timeInvestment, function);
 		}
 
-		std::vector<InternalJobBase*> jobs;
+		std::vector<Job*> jobs;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
@@ -361,7 +361,7 @@ namespace JbSystem {
 		int CurrentBatchEnd = endOfRange;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
-			jobs.push_back(new InternalJob(
+			jobs.push_back(new Job(
 				[function, jobStartIndex = endOfRange - ((totalBatches + 1) * batchSize), jobEndIndex = endOfRange - (totalBatches * batchSize)](){
 				for (int i = jobStartIndex; i < jobEndIndex; i++)
 				{
@@ -372,7 +372,7 @@ namespace JbSystem {
 		}
 
 		//Create last job
-		jobs.push_back(new InternalJob(
+		jobs.push_back(new Job(
 			[function, jobStartIndex = 0, jobEndIndex = endOfRange - (totalBatches * batchSize)](){
 			for (int i = jobStartIndex; i < jobEndIndex; i++)
 			{
@@ -392,7 +392,7 @@ namespace JbSystem {
 		constexpr JobPriority dependencyCheckPriority = JobPriority::Low;
 
 		std::function<void()> jobScheduler;
-		jobScheduler = [this, callback, &jobScheduler, dependencies, dependencyCheckPriority]() {
+		jobScheduler = [this, callback, &jobScheduler, dependencies, &dependencyCheckPriority]() {
 			bool result = false;
 			for (int i = 0; i < dependencies.size(); i++) {
 				if (WaitForJobCompletion(dependencies.at(i), false)) {
@@ -409,6 +409,6 @@ namespace JbSystem {
 			}
 		};
 
-		Schedule(new InternalJob(jobScheduler, dependencyCheckPriority));
+		Schedule(new Job(jobScheduler, dependencyCheckPriority));
 	}
 }
