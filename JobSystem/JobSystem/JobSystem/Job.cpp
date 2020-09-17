@@ -1,7 +1,7 @@
 ﻿// JobSystem.cpp : Defines the entry point for the application.
 //
 
-#include "InternalJob.h"
+#include "Job.h"
 
 #include <atomic>
 

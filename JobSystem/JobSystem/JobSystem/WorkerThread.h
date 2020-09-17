@@ -1,5 +1,5 @@
 #pragma once
-#include "InternalJob.h"
+#include "Job.h"
 
 #include <thread>
 #include <functional>

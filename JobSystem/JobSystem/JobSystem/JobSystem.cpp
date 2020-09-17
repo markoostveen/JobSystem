@@ -6,7 +6,11 @@
 
 using namespace JbSystem;
 
-JobSystem* JobSystemSingleton = new JobSystem();
+JobSystem* JobSystemSingleton;
+
+JobSystem::JobSystem(int threadCount) {
+	ReConfigure(threadCount);
+}
 
 JobSystem::~JobSystem()
 {
@@ -54,7 +58,7 @@ void JbSystem::JobSystem::Start(int threadCount)
 
 	//Reschedule saved jobs
 	std::thread rescheduleJob = std::thread([&]() {
-		int iteration = 0;
+		size_t iteration = 0;
 		while (iteration < jobs.size()) {
 			for (int i = 0; i < _workerCount && iteration < jobs.size(); i++)
 			{
@@ -75,7 +79,7 @@ std::vector<Job*> JbSystem::JobSystem::Shutdown()
 	int realScheduledJobs = 0;
 	while (realScheduledJobs > 0) {
 		realScheduledJobs = 0;
-		for (size_t i = 0; i < _workerCount; i++)
+		for (int i = 0; i < _workerCount; i++)
 		{
 			realScheduledJobs += _workers[i]._highPriorityTaskQueue.size();
 			realScheduledJobs += _workers[i]._normalPriorityTaskQueue.size();
@@ -109,6 +113,9 @@ void JbSystem::JobSystem::ExecuteJob(JobPriority maxTimeInvestment)
 
 JobSystem* JbSystem::JobSystem::GetInstance()
 {
+	if (JobSystemSingleton == nullptr) {
+		JobSystemSingleton = new JobSystem();
+	}
 	return JobSystemSingleton;
 }
 
@@ -206,7 +213,7 @@ std::vector<int> JbSystem::JobSystem::BatchScheduleJob(std::vector<Job*> newjobs
 std::vector<int> JbSystem::JobSystem::BatchScheduleFutureJob(std::vector<Job*> newjobs)
 {
 	std::vector<int> jobIds;
-	int totalAmountOfJobs = newjobs.size();
+	size_t totalAmountOfJobs = newjobs.size();
 	jobIds.reserve(totalAmountOfJobs);
 
 	for (size_t i = 0; i < totalAmountOfJobs; i++)
@@ -215,7 +222,7 @@ std::vector<int> JbSystem::JobSystem::BatchScheduleFutureJob(std::vector<Job*> n
 	}
 
 	_jobsMutex.lock();
-	for (int i = 0; i < totalAmountOfJobs; i++)
+	for (size_t i = 0; i < totalAmountOfJobs; i++)
 	{
 		int jobId = jobIds[i];
 		if (!_scheduledJobs.contains(jobId))
@@ -225,19 +232,14 @@ std::vector<int> JbSystem::JobSystem::BatchScheduleFutureJob(std::vector<Job*> n
 	return jobIds;
 }
 
-bool JbSystem::JobSystem::WaitForJobCompletion(int jobId, bool helpExecutingOtherJobs, int maxMicroSecondsToWait)
+bool JbSystem::JobSystem::WaitForJobCompletion(int jobId, int maxMicroSecondsToWait)
 {
 	bool jobFinished = IsJobCompleted(jobId);
 
 	std::chrono::time_point start = std::chrono::steady_clock::now();
 
-	int minimalWait = 100;
-	if (!helpExecutingOtherJobs)
-		minimalWait = 0;
-
 	while (!jobFinished) {
-		if (helpExecutingOtherJobs)
-			ExecuteJob();// use resources to aid workers instead of sleeping
+		ExecuteJob();// use resources to aid workers instead of sleeping
 
 		int passedMicroSeconds = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
 

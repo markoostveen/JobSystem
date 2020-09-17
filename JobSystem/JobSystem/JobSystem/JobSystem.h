@@ -1,7 +1,7 @@
-﻿#pragma once
+#pragma once
 
-#include "InternalJob.h"
-#include "JobSystemThread.h"
+#include "Job.h"
+#include "WorkerThread.h"
 
 #include <thread>
 #include <atomic>
@@ -16,7 +16,7 @@ namespace JbSystem {
 
 	class JobSystem {
 	public:
-		JobSystem() = default;
+		JobSystem(int threadCount = std::thread::hardware_concurrency() - 1);
 		~JobSystem();
 
 		/// <summary>
@@ -36,7 +36,7 @@ namespace JbSystem {
 
 		//Single function
 		template<JobFunction T>
-		int Schedule(T function, JobPriority timeInvestment);
+		int Schedule(T function, JobPriority timeInvestment = JobPriority::Normal);
 		template<JobFunction T, typename ...JobId>
 		int Schedule(T function, JobPriority timeInvestment, JobId... dependencies);
 		template<JobFunction T>
@@ -62,7 +62,7 @@ namespace JbSystem {
 		/// <param name="jobId"></param>
 		/// <param name="maxMicroSecondsToWait">when elapsed function will return false if job hasn't been completed yet, 0 = infinity</param>
 		/// <returns>weather or not the job was completed</returns>
-		bool WaitForJobCompletion(int jobId, bool helpExecutingOtherJobs = true, int maxMicroSecondsToWait = 0);
+		bool WaitForJobCompletion(int jobId, int maxMicroSecondsToWait = 0);
 
 		/// <summary>
 		/// Block execution until given jobs have been completed, this operation is blocking
@@ -392,9 +392,9 @@ namespace JbSystem {
 		constexpr JobPriority dependencyCheckPriority = JobPriority::Low;
 
 		std::function<void()> jobScheduler;
-		jobScheduler = [this, callback, &jobScheduler, dependencies, &dependencyCheckPriority]() {
+		jobScheduler = [this, callback, &jobScheduler, dependencies]() {
 			bool result = false;
-			for (int i = 0; i < dependencies.size(); i++) {
+			for (size_t i = 0; i < dependencies.size(); i++) {
 				if (WaitForJobCompletion(dependencies.at(i), false)) {
 					result = true;
 					break;
