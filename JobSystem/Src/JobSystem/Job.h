@@ -13,6 +13,11 @@ namespace JbSystem {
 
 	enum class JobPriority {
 		/// <summary>
+		/// Doesn't represent any job
+		/// </summary>
+		None = -1,
+
+		/// <summary>
 		/// For your smallest jobs
 		/// </summary>
 		High = 0,

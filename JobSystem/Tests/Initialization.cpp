@@ -2,10 +2,10 @@
 
 #include <iostream>
 
+//Make a custom jobsystem, and try to delete it.
+
 int main() {
-	std::cout << "Initialization test" << std::endl;
 	JbSystem::JobSystem* custom = new JbSystem::JobSystem();
 	delete custom;
-	std::cout << "Initialization test Completed" << std::endl;
 	return 0;
 }

@@ -7,7 +7,6 @@ using namespace std;
 using namespace JbSystem;
 
 void Job1Test() {
-	std::this_thread::sleep_for(std::chrono::microseconds(2));
 }
 
 void TestJobSystem(JobSystem*& jobSystem) {
@@ -15,28 +14,25 @@ void TestJobSystem(JobSystem*& jobSystem) {
 	std::chrono::high_resolution_clock::time_point end;
 
 	auto job2 = [jobSystem]() {
-		std::vector<int> parallelJob = jobSystem->Schedule(0, 10000, 100, JobPriority::High, [](int index) {
-			std::this_thread::sleep_for(std::chrono::nanoseconds(5));
-			});
+		std::vector<int> parallelJob = jobSystem->Schedule(0, 10000, 100, [](int index) {
+			}, JobPriority::High);
 
 		jobSystem->WaitForJobCompletion(parallelJob);
 	};
 
 	auto job3 = []() {
-		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	};
 
 	auto job4 = []() {
-		std::this_thread::sleep_for(std::chrono::microseconds(500));
 	};
 
 	start = std::chrono::high_resolution_clock::now();
 
 	std::vector<int> job1Id = jobSystem->Schedule(1000, 5, JobPriority::High, Job1Test);
 	int job2Id = jobSystem->Schedule(job2, JobPriority::Low);
-	int job3Id = jobSystem->Schedule(job3, JobPriority::Normal, job2Id);
+	int job3Id = jobSystem->ScheduleDependend(job3, job2Id);
 	job1Id.push_back(job3Id);
-	int job4Id = jobSystem->Schedule(job4, JobPriority::Low, job1Id);
+	int job4Id = jobSystem->ScheduleDependend(job4, JobPriority::Low, job1Id);
 	while (!jobSystem->WaitForJobCompletion(job4Id)) {}
 
 	end = std::chrono::high_resolution_clock::now();
@@ -55,13 +51,8 @@ void TestNormal() {
 	{
 		for (size_t i = 0; i < 100; i++)
 		{
-			std::this_thread::sleep_for(std::chrono::nanoseconds(50));
 		}
 	}
-
-	std::this_thread::sleep_for(std::chrono::microseconds(100));
-
-	std::this_thread::sleep_for(std::chrono::microseconds(500));
 
 	end = std::chrono::high_resolution_clock::now();
 	std::cout << "Normal took " << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << " us" << std::endl;
@@ -72,23 +63,23 @@ void InsertManySmallJobs(JobSystem*& jobSystem) {
 
 	int job1Id = jobSystem->Schedule(testLambda, JobPriority::High);
 
-	jobSystem->Schedule(0, 10000, 1000, JobPriority::Normal, [](int index) {
+	jobSystem->ScheduleDependend(0, 10000, 1000, [](int index) {
 		for (size_t i = 0; i < 3000; i++)
 		{
 		}
 		}, job1Id);
 
-	std::vector<int> parallelJob = jobSystem->Schedule(0, 10000, 1000, JobPriority::High, [](int index) {
+	std::vector<int> parallelJob = jobSystem->Schedule(0, 10000, 1000, [](int index) {
 		for (size_t i = 0; i < 5000; i++)
 		{
 		}
-		});
+		}, JobPriority::High);
 
-	vector<int> jobIds = jobSystem->Schedule(0, 10000, 1000, JobPriority::Low, [](int index) {
+	vector<int> jobIds = jobSystem->ScheduleDependend(0, 10000, 1000, [](int index) {
 		for (size_t i = 0; i < 2000; i++)
 		{
 		}
-		}, parallelJob);
+		}, JobPriority::Low, parallelJob);
 
 	jobSystem->WaitForJobCompletion(jobIds);
 }
@@ -142,7 +133,7 @@ void test(JobSystem* jobSystem, bool insertRandomJobs) {
 	};
 
 	//test if jobsystem, can handle a task with zero dependencies
-	int finalJobId = jobSystem->Schedule(exitJob, JobPriority::Low, jobIds);
+	int finalJobId = jobSystem->ScheduleDependend(exitJob, JobPriority::Low, jobIds);
 
 	jobSystem->WaitForJobCompletion(finalJobId);
 	jobIds.clear();
@@ -170,7 +161,7 @@ int main()
 	custom->ReConfigure();
 	delete custom;
 
-	test(JobSystem::GetInstance(), insertRandomJobs);
+	test(JobSystem::GetInstance().get(), insertRandomJobs);
 
 	JobSystem::GetInstance()->ReConfigure();
 

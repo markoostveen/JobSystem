@@ -134,7 +134,7 @@ void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 	delete job;
 }
 
-bool JbSystem::JobSystemWorker::IsJobFinished(int& jobId)
+bool JbSystem::JobSystemWorker::IsJobFinished(const int jobId)
 {
 	_completedJobsMutex.lock();
 	bool contains = _completedJobs.contains(jobId);

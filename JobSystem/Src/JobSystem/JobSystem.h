@@ -38,37 +38,58 @@ namespace JbSystem {
 		template<JobFunction T>
 		int Schedule(T function, JobPriority timeInvestment = JobPriority::Normal);
 		template<JobFunction T, typename ...JobId>
-		int Schedule(T function, JobPriority timeInvestment, JobId... dependencies);
+		int ScheduleDependend(T function, JobPriority timeInvestment, JobId... dependencies);
+		template<JobFunction T, typename ...JobId>
+		int ScheduleDependend(T function, JobId... dependencies);
 		template<JobFunction T>
-		int Schedule(T function, JobPriority timeInvestment, std::vector<int> dependencies);
+		int ScheduleDependend(T function, JobPriority timeInvestment, std::vector<int> dependencies);
 
 		//Parallel loops
 		template<JobFunction T>
 		std::vector<int> Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function);
 		template<JobFunction T, typename ...JobId>
-		std::vector<int> Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function, JobId... dependencies);
+		std::vector<int> ScheduleDependend(int totalIterations, int batchSize, T function, JobPriority timeInvestment, JobId... dependencies);
+		template<JobFunction T, typename ...JobId>
+		std::vector<int> ScheduleDependend(int totalIterations, int batchSize, T function, JobId... dependencies);
 		template<JobFunction T>
-		std::vector<int> Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function, std::vector<int> dependencies);
+		std::vector<int> ScheduleDependend(int totalIterations, int batchSize, T function, JobPriority timeInvestment, std::vector<int> dependencies);
 		template<ParrallelJobFunction T>
-		std::vector<int> Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function);
+		std::vector<int> Schedule(int startIndex, int endIndex, int batchSize, T function, JobPriority timeInvestment = JobPriority::Normal);
 		template<ParrallelJobFunction T, typename ...JobId>
-		std::vector<int> Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function, JobId... dependencies);
+		std::vector<int> ScheduleDependend(int startIndex, int endIndex, int batchSize, T function, JobPriority timeInvestment, JobId... dependencies);
+		template<ParrallelJobFunction T, typename ...JobId>
+		std::vector<int> ScheduleDependend(int startIndex, int endIndex, int batchSize, T function, JobId... dependencies);
 		template<ParrallelJobFunction T>
-		std::vector<int> Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function, std::vector<int> dependencies);
+		std::vector<int> ScheduleDependend(int startIndex, int endIndex, int batchSize, T function, JobPriority timeInvestment, std::vector<int> dependencies);
+
+		/// <summary>
+		/// Caller will help execute jobs until the job with specified Id is completed
+		/// </summary>
+		/// <param name="jobId"></param>
+		/// <returns>weather or not the job was completed</returns>
+		bool IsJobCompleted(const int jobId);
 
 		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed
 		/// </summary>
 		/// <param name="jobId"></param>
 		/// <param name="maxMicroSecondsToWait">when elapsed function will return false if job hasn't been completed yet, 0 = infinity</param>
-		/// <returns>weather or not the job was completed</returns>
-		bool WaitForJobCompletion(int jobId, int maxMicroSecondsToWait = 0);
+		/// <returns>weather or not the job was completed in time</returns>
+		bool WaitForJobCompletion(int jobId, JobPriority maximumHelpEffort = JobPriority::Low);
+
+		/// <summary>
+		/// Caller will help execute jobs until the job with specified Id is completed
+		/// </summary>
+		/// <param name="jobId"></param>
+		/// <param name="maxMicroSecondsToWait">when elapsed function will return false if job hasn't been completed yet, 0 = infinity</param>
+		/// <returns>weather or not the job was completed in time</returns>
+		bool WaitForJobCompletion(int jobId, int maxMicroSecondsToWait, JobPriority maximumHelpEffort = JobPriority::Low);
 
 		/// <summary>
 		/// Block execution until given jobs have been completed, this operation is blocking
 		/// </summary>
 		/// <param name="jobIds"></param>
-		void WaitForJobCompletion(std::vector<int>& jobIds);
+		void WaitForJobCompletion(std::vector<int>& jobIds, JobPriority maximumHelpEffort = JobPriority::Low);
 
 		/// <summary>
 		/// wait for jobs to complete, then execute function
@@ -77,7 +98,7 @@ namespace JbSystem {
 		/// <param name="callback">function to execute after jobs have been completed</param>
 		/// <returns></returns>
 		template<JobFunction T>
-		void WaitForJobCompletion(const std::vector<int> dependencies, const T& callback);
+		void WaitForJobCompletion(const std::vector<int> dependencies, const T& callback, JobPriority maximumHelpEffort = JobPriority::Low);
 
 		/// <summary>
 		/// Executes a scheduled job
@@ -88,7 +109,7 @@ namespace JbSystem {
 		/// Get singleton instance
 		/// </summary>
 		/// <returns></returns>
-		static JobSystem* GetInstance();
+		static std::shared_ptr<JobSystem> GetInstance();
 
 		int ActiveJobCount();
 
@@ -111,8 +132,6 @@ namespace JbSystem {
 		std::vector<int> BatchScheduleFutureJob(std::vector<Job*> newjobs);
 
 		void ExecuteJobFromWorker(JobPriority maxTimeInvestment = JobPriority::Low);
-
-		bool IsJobCompleted(int& jobId);
 
 		void Cleanup();
 
@@ -142,7 +161,7 @@ namespace JbSystem {
 	}
 
 	template<JobFunction T, typename ...JobId>
-	inline int JobSystem::Schedule(T function, JobPriority timeInvestment, JobId... dependencies)
+	inline int JobSystem::ScheduleDependend(T function, JobPriority timeInvestment, JobId... dependencies)
 	{
 		Job* newJob = new Job(function, timeInvestment);
 
@@ -154,8 +173,14 @@ namespace JbSystem {
 		return jobId;
 	}
 
+	template<JobFunction T, typename ...JobId>
+	inline int JobSystem::ScheduleDependend(T function, JobId ...dependencies)
+	{
+		return ScheduleDependend(function, JobPriority::Normal, dependencies...);
+	}
+
 	template<JobFunction T>
-	inline int JobSystem::Schedule(T function, JobPriority timeInvestment, std::vector<int> dependencies)
+	inline int JobSystem::ScheduleDependend(T function, JobPriority timeInvestment, std::vector<int> dependencies)
 	{
 		if (dependencies.size() == 0) {
 			return Schedule(function, timeInvestment);
@@ -202,7 +227,7 @@ namespace JbSystem {
 	}
 
 	template<JobFunction T, typename ...JobId>
-	inline std::vector<int> JobSystem::Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function, JobId ...dependencies)
+	inline std::vector<int> JobSystem::ScheduleDependend(int totalIterations, int batchSize, T function, JobPriority timeInvestment, JobId ...dependencies)
 	{
 		std::vector<Job*> jobs;
 
@@ -238,8 +263,14 @@ namespace JbSystem {
 		return jobIds;
 	}
 
+	template<JobFunction T, typename ...JobId>
+	inline std::vector<int> JobSystem::ScheduleDependend(int totalIterations, int batchSize, T function, JobId ...dependencies)
+	{
+		return ScheduleDependend(totalIterations, batchSize, function, dependencies...);
+	}
+
 	template<JobFunction T>
-	inline std::vector<int> JobSystem::Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function, std::vector<int> dependencies)
+	inline std::vector<int> JobSystem::ScheduleDependend(int totalIterations, int batchSize, T function, JobPriority timeInvestment, std::vector<int> dependencies)
 	{
 		if (jobIds.size() == 0) {
 			return Schedule(totalIterations, batchSize, timeInvestment, function);
@@ -278,7 +309,7 @@ namespace JbSystem {
 	}
 
 	template<ParrallelJobFunction T>
-	inline std::vector<int> JobSystem::Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function)
+	inline std::vector<int> JobSystem::Schedule(int startIndex, int endIndex, int batchSize, T function, JobPriority timeInvestment)
 	{
 		std::vector<Job*> jobs;
 
@@ -310,7 +341,7 @@ namespace JbSystem {
 		return BatchScheduleJob(jobs, timeInvestment);
 	}
 	template<ParrallelJobFunction T, typename ...JobId>
-	inline std::vector<int> JobSystem::Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function, JobId ... dependencies)
+	inline std::vector<int> JobSystem::ScheduleDependend(int startIndex, int endIndex, int batchSize, T function, JobPriority timeInvestment, JobId ... dependencies)
 	{
 		std::vector<Job*> jobs;
 
@@ -346,11 +377,16 @@ namespace JbSystem {
 		WaitForJobCompletion(dependencyArray, [this, jobs, timeInvestment]() { BatchScheduleJob(jobs, timeInvestment); });
 		return jobIds;
 	}
+	template<ParrallelJobFunction T, typename ...JobId>
+	inline std::vector<int> JobSystem::ScheduleDependend(int startIndex, int endIndex, int batchSize, T function, JobId ...dependencies)
+	{
+		return ScheduleDependend(startIndex, endIndex, batchSize, function, JobPriority::Normal, dependencies...);
+	}
 	template<ParrallelJobFunction T>
-	inline std::vector<int> JobSystem::Schedule(int startIndex, int endIndex, int batchSize, JobPriority timeInvestment, T function, std::vector<int> dependencies)
+	inline std::vector<int> JobSystem::ScheduleDependend(int startIndex, int endIndex, int batchSize, T function, JobPriority timeInvestment, std::vector<int> dependencies)
 	{
 		if (dependencies.size() == 0) {
-			return Schedule(startIndex, endIndex, batchSize, timeInvestment, function);
+			return Schedule(startIndex, endIndex, batchSize, function, timeInvestment);
 		}
 
 		std::vector<Job*> jobs;
@@ -387,28 +423,23 @@ namespace JbSystem {
 	}
 
 	template<JobFunction T>
-	inline void JobSystem::WaitForJobCompletion(const std::vector<int> dependencies, const T& callback)
+	inline void JobSystem::WaitForJobCompletion(const std::vector<int> dependencies, const T& callback, JobPriority maximumHelpEffort)
 	{
-		constexpr JobPriority dependencyCheckPriority = JobPriority::Low;
-
-		std::function<void()> jobScheduler;
-		jobScheduler = [this, callback, &jobScheduler, dependencies]() {
-			bool result = false;
+		auto jobScheduler = [this, dependencies, maximumHelpEffort](auto& retryFunction, auto& callback) -> void {
 			for (size_t i = 0; i < dependencies.size(); i++) {
-				if (WaitForJobCompletion(dependencies.at(i), false)) {
-					result = true;
-					break;
+				if (!WaitForJobCompletion(dependencies.at(i), maximumHelpEffort)) {
+					// Prerequsites not met, queueing async job to check back later
+					constexpr JobPriority dependencyCheckPriority = JobPriority::Low;
+					Schedule(new Job([retryFunction, callback]() -> void { retryFunction(retryFunction, callback); }, dependencyCheckPriority));
+					return;
 				}
 			}
 
-			if (!result)
-				Schedule(jobScheduler, dependencyCheckPriority);
-			else {
-				//When all dependencies are
-				callback();
-			}
+			//When all dependencies are completed
+			callback();
 		};
 
-		Schedule(new Job(jobScheduler, dependencyCheckPriority));
+		// run in sync
+		jobScheduler(jobScheduler, callback);
 	}
 }

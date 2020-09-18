@@ -36,7 +36,7 @@ namespace JbSystem {
 		/// <param name="job"></param>
 		void FinishJob(Job*& job);
 
-		bool IsJobFinished(int& jobId);
+		bool IsJobFinished(const int jobId);
 
 		//Is the read suppost to be active
 		bool Active;

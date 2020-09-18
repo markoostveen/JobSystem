@@ -6,4 +6,7 @@ cmake_minimum_required (VERSION 3.8)
 project ("JobSystem")
 
 # Include sub-projects.
-add_subdirectory ("JobSystem")
+add_subdirectory ("Src")
+
+enable_testing()
+add_subdirectory ("Tests")

@@ -4,7 +4,6 @@
 #include <vector>
 
 int main() {
-	std::cout << "multiple jobs independend test" << std::endl;
 	JbSystem::JobSystem* custom = new JbSystem::JobSystem(3);
 
 	constexpr int totalJobSize = 50;
@@ -32,6 +31,5 @@ int main() {
 
 	custom->WaitForJobCompletion(jobIds);
 	delete custom;
-	std::cout << "multiple jobs independend test Completed" << std::endl;
 	return 0;
 }
