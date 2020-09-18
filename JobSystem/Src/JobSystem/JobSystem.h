@@ -46,7 +46,7 @@ namespace JbSystem {
 
 		//Parallel loops
 		template<JobFunction T>
-		std::vector<int> Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function);
+		std::vector<int> Schedule(int totalIterations, int batchSize, T function, JobPriority timeInvestment = JobPriority::Normal);
 		template<JobFunction T, typename ...JobId>
 		std::vector<int> ScheduleDependend(int totalIterations, int batchSize, T function, JobPriority timeInvestment, JobId... dependencies);
 		template<JobFunction T, typename ...JobId>
@@ -110,8 +110,6 @@ namespace JbSystem {
 		/// </summary>
 		/// <returns></returns>
 		static std::shared_ptr<JobSystem> GetInstance();
-
-		int ActiveJobCount();
 
 	private:
 
@@ -195,7 +193,7 @@ namespace JbSystem {
 	}
 
 	template<JobFunction T>
-	inline std::vector<int> JobSystem::Schedule(int totalIterations, int batchSize, JobPriority timeInvestment, T function)
+	inline std::vector<int> JobSystem::Schedule(int totalIterations, int batchSize, T function, JobPriority timeInvestment)
 	{
 		std::vector<Job*> jobs;
 

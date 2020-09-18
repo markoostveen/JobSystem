@@ -9,7 +9,7 @@ namespace JbSystem {
 	concept JobFunction = std::is_convertible<T, std::function<void()>>::value;
 
 	template<typename T>
-	concept ParrallelJobFunction = std::is_convertible<T, std::function<void(int)>>::value;
+	concept ParrallelJobFunction = std::is_convertible<T, std::function<void(const int)>>::value;
 
 	enum class JobPriority {
 		/// <summary>

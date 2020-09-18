@@ -28,7 +28,7 @@ void TestJobSystem(JobSystem*& jobSystem) {
 
 	start = std::chrono::high_resolution_clock::now();
 
-	std::vector<int> job1Id = jobSystem->Schedule(1000, 5, JobPriority::High, Job1Test);
+	std::vector<int> job1Id = jobSystem->Schedule(1000, 5, Job1Test, JobPriority::High);
 	int job2Id = jobSystem->Schedule(job2, JobPriority::Low);
 	int job3Id = jobSystem->ScheduleDependend(job3, job2Id);
 	job1Id.push_back(job3Id);

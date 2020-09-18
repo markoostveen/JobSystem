@@ -6,8 +6,6 @@
 
 using namespace JbSystem;
 
-std::shared_ptr<JobSystem> JobSystemSingleton;
-
 JobSystem::JobSystem(int threadCount) {
 	ReConfigure(threadCount);
 }
@@ -87,7 +85,7 @@ std::vector<Job*> JbSystem::JobSystem::Shutdown()
 		}
 	}
 
-	//Let worker safely shutdown and complete it's last job
+	//Let worker safely shutdown and complete active last job
 	for (int i = 0; i < _workerCount; i++)
 	{
 		_workers[i].Active = false;
@@ -111,25 +109,13 @@ void JbSystem::JobSystem::ExecuteJob(JobPriority maxTimeInvestment)
 	ExecuteJobFromWorker(maxTimeInvestment);
 }
 
+static std::shared_ptr<JobSystem> JobSystemSingleton;
 std::shared_ptr<JobSystem> JbSystem::JobSystem::GetInstance()
 {
 	if (JobSystemSingleton == nullptr) {
 		JobSystemSingleton = std::make_shared<JobSystem>();
 	}
 	return JobSystemSingleton;
-}
-
-/// <summary>
-/// This reading is not very accurate as it only represents the scheduled jobs count and does not reflect what has already been completed
-/// </summary>
-/// <returns></returns>
-int JbSystem::JobSystem::ActiveJobCount()
-{
-	_jobsMutex.lock();
-	int jobCount = _scheduledJobs.size();
-	_jobsMutex.unlock();
-	std::cout << "Total remaining: " << jobCount << std::endl;
-	return jobCount;
 }
 
 int JbSystem::JobSystem::Schedule(Job* newjob)
@@ -271,7 +257,7 @@ bool JbSystem::JobSystem::WaitForJobCompletion(int jobId, int maxMicroSecondsToW
 	while (!jobFinished) {
 		ExecuteJob(maximumHelpEffort);// use resources to aid workers instead of sleeping
 
-		int passedMicroSeconds = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+		int passedMicroSeconds = static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
 
 		if (passedMicroSeconds < maxMicroSecondsToWait)
 			continue;

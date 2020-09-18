@@ -14,7 +14,4 @@ Add_Test_JobSystem(Initialization Initialization.cpp)
 Add_Test_JobSystem(Singleton Singleton.cpp)
 Add_Test_JobSystem(SingleJobs SingleJob.cpp)
 Add_Test_JobSystem(MultiJobs MultiJobs.cpp)
-Add_Test_JobSystem(MultiJobs_Independend MultiJobs_Independend.cpp)
-
-
-Add_Test_JobSystem(Main main.cpp)
+Add_Test_JobSystem(Parallel ParallelJobs.cpp)
