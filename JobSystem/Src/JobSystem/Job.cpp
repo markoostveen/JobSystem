@@ -7,23 +7,27 @@
 
 using namespace JbSystem;
 
-const int JbSystem::Job::GetId() const
+//JbSystem::Job::Job()
+//	: _priority(JobPriority::None), _id(0), _function({})
+//{
+//}
+
+const int JbSystem::JobBase::GetId() const
 {
 	return _id;
 }
 
-const JobPriority JbSystem::Job::GetTimeInvestment() const
+const JobPriority JbSystem::JobBase::GetPriority() const
 {
-	return _timeInvestment;
-}
-
-void JbSystem::Job::Run() const
-{
-	_function();
+	return _priority;
 }
 
 static std::atomic<int> Identifier; // Use atomic to ensure that value is only incremented once
+JbSystem::JobBase::JobBase(const JobPriority priority, const Function callback)
+	: _id(Identifier++), _basefunction(callback), _priority(priority)
+{
+}
 
-JbSystem::Job::Job(JobPriority timeInvestment)
-	: _id(Identifier++), _timeInvestment(timeInvestment)
-{}
+JbSystem::JobBase::JobBase(const int id, const JobPriority priority, const Function callback)
+	: _id(id), _basefunction(callback), _priority(priority) {
+}

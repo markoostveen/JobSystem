@@ -2,12 +2,16 @@
 
 #include <iostream>
 
-int main() {
-	auto jobsystem = JbSystem::JobSystem::GetInstance();
+using namespace JbSystem;
 
-	jobsystem->Schedule([]() {});
-	jobsystem->Schedule([]() {});
-	jobsystem->Schedule([]() {});
+int main() {
+	auto jobsystem = JobSystem::GetInstance();
+
+	auto jobFunction = []() {};
+
+	jobsystem->Schedule(JobSystem::CreateJob(JobPriority::Normal, jobFunction));
+	jobsystem->Schedule(JobSystem::CreateJob(JobPriority::Normal, jobFunction));
+	jobsystem->Schedule(JobSystem::CreateJob(JobPriority::Normal, jobFunction));
 
 	jobsystem->ExecuteJob();
 	jobsystem->ExecuteJob();

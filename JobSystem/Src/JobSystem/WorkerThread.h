@@ -27,14 +27,14 @@ namespace JbSystem {
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
 
-		Job* TryTakeJob(JobPriority maxTimeInvestment = JobPriority::High);
-		void GiveJob(Job*& newJob);
+		JobBase* TryTakeJob(const JobPriority maxTimeInvestment = JobPriority::High);
+		void GiveJob(JobBase* newJob);
 
 		/// <summary>
 		/// Finishes job and cleans up after
 		/// </summary>
 		/// <param name="job"></param>
-		void FinishJob(Job*& job);
+		void FinishJob(JobBase*& job);
 
 		bool IsJobFinished(const int jobId);
 
@@ -46,9 +46,9 @@ namespace JbSystem {
 		executeExternalFunction _executeExternalJobFunction;
 
 		std::mutex _queueMutex;
-		std::queue<Job*> _highPriorityTaskQueue;
-		std::queue<Job*> _normalPriorityTaskQueue;
-		std::queue<Job*> _lowPriorityTaskQueue;
+		std::queue<JobBase*> _highPriorityTaskQueue;
+		std::queue<JobBase*> _normalPriorityTaskQueue;
+		std::queue<JobBase*> _lowPriorityTaskQueue;
 
 		std::mutex _completedJobsMutex;
 		std::unordered_set<int> _completedJobs;

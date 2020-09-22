@@ -12,10 +12,8 @@ void JobSystemWorker::ThreadLoop() {
 
 	int noJobCount = 0;
 
-	Job* job;
-
 	while (Active) {
-		job = TryTakeJob();
+		JobBase* job = TryTakeJob();
 		if (job != nullptr) {
 			noJobCount = 0;
 			job->Run();
@@ -52,13 +50,6 @@ JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
 
 JbSystem::JobSystemWorker::~JobSystemWorker()
 {
-	// free memory of all queued jobs in this worker object
-	Job* currentJob = TryTakeJob();
-	while (currentJob != nullptr) {
-		delete currentJob;
-		currentJob = TryTakeJob();
-	}
-
 	if (_worker.joinable())
 		_worker.join();
 }
@@ -84,9 +75,9 @@ void JobSystemWorker::Start()
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
-Job* JbSystem::JobSystemWorker::TryTakeJob(JobPriority maxTimeInvestment)
+JobBase* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 {
-	//Return a result based on weight of a job
+	//Return a result based on priority of a job
 
 	_queueMutex.lock();
 	if (!_highPriorityTaskQueue.empty() && maxTimeInvestment >= JobPriority::High) {
@@ -109,27 +100,30 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(JobPriority maxTimeInvestment)
 	}
 
 	_queueMutex.unlock();
+
 	return nullptr;
 }
 
-void JbSystem::JobSystemWorker::GiveJob(Job*& newJob)
+void JbSystem::JobSystemWorker::GiveJob(JobBase* newJob)
 {
-	JobPriority timeInvestment = newJob->GetTimeInvestment();
+	const JobPriority timeInvestment = newJob->GetPriority();
 
 	_queueMutex.lock();
 	if (timeInvestment == JobPriority::High)
 		_highPriorityTaskQueue.emplace(newJob);
 	else if (timeInvestment == JobPriority::Normal)
 		_normalPriorityTaskQueue.emplace(newJob);
-	else
+	else if (timeInvestment == JobPriority::Low)
 		_lowPriorityTaskQueue.emplace(newJob);
 	_queueMutex.unlock();
 }
 
-void JbSystem::JobSystemWorker::FinishJob(Job*& job)
+void JbSystem::JobSystemWorker::FinishJob(JobBase*& job)
 {
+	const int jobId = job->GetId();
 	_completedJobsMutex.lock();
-	_completedJobs.emplace(job->GetId());
+	if (!_completedJobs.contains(jobId))
+		_completedJobs.emplace(job->GetId());
 	_completedJobsMutex.unlock();
 	delete job;
 }

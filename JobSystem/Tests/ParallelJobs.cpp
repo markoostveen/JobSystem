@@ -5,29 +5,39 @@
 #include <iostream>
 #include <vector>
 
-bool RunSimpleParallelJobs() {
-	auto jobSystem = JbSystem::JobSystem::GetInstance();
+using namespace JbSystem;
 
-	std::vector<int> jobIds = jobSystem->Schedule(0, 10000, 100, [](int index) {});
-	
-	int controlJobId = jobSystem->ScheduleDependend([]() {}, jobIds);
-	return jobSystem->WaitForJobCompletion(controlJobId, 1000 * 4);
+bool RunSimpleParallelJobs() {
+	auto jobSystem = JobSystem::GetInstance();
+
+	auto job = JobSystem::CreateParallelJob(JobPriority::High, 0, 10000, 100, [](int index) {});
+	std::vector<int> jobIds = jobSystem->Schedule(job);
+
+	jobSystem->WaitForJobCompletion(jobIds);
+	return true;
 }
 
 bool RunDependendParallelJobs() {
 	auto jobSystem = JbSystem::JobSystem::GetInstance();
 
-	std::vector<int> jobIds = jobSystem->Schedule(0, 10000, 100, [](int index) {});
-	std::vector<int> jobIds2 = jobSystem->ScheduleDependend(0, 10000, 100, [](int index) {}, JbSystem::JobPriority::High);
-	int singleJobId = jobSystem->ScheduleDependend([]() {}, jobIds);
+	auto job1 = JobSystem::CreateParallelJob(JobPriority::High, 0, 10000, 100, [](int index) {});
+	std::vector<int> jobIds = jobSystem->Schedule(job1);
+
+	auto job2 = JobSystem::CreateParallelJob(JobPriority::Normal, 0, 10000, 100, [](int index) {});
+	std::vector<int> jobIds2 = jobSystem->Schedule(job2);
+
+	auto singleJob = JobSystem::CreateJob(JobPriority::Normal, []() {});
+	int singleJobId = jobSystem->Schedule(singleJob, jobIds);
 	jobIds2.emplace_back(singleJobId);
 
+	auto job3 = JobSystem::CreateParallelJob(JobPriority::Normal, 0, 10000, 100, [](int index) {});
+	std::vector<int> jobIds3 = jobSystem->Schedule(job3, jobIds2);
 
-	std::vector<int> jobIds3 = jobSystem->ScheduleDependend(0, 10000, 100, [](int index) {}, jobIds2);
+	auto job4 = JobSystem::CreateJob(JobPriority::Low, []() {});
+	int controlJobId = jobSystem->Schedule(job4, jobIds3);
 
-	int controlJobId = jobSystem->ScheduleDependend([]() {}, jobIds3);
-
-	return jobSystem->WaitForJobCompletion(controlJobId, 1000 * 4);
+	jobSystem->WaitForJobCompletion(controlJobId);
+	return true;
 }
 
 TEST_CASE("Run jobs in parallel") {
