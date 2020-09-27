@@ -1,5 +1,7 @@
 #include "WorkerThread.h"
 
+#include "JobSystem.h"
+
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -10,38 +12,38 @@ void JobSystemWorker::ThreadLoop() {
 	std::unique_lock ul(_isRunningMutex);
 	//std::cout << "Worker has started" << std::endl;
 
-	int noJobCount = 0;
+	//int noJobCount = 0;
 
 	while (Active) {
-		JobBase* job = TryTakeJob();
+		Job* job = TryTakeJob();
 		if (job != nullptr) {
-			noJobCount = 0;
+			//noJobCount = 0;
 			job->Run();
 			FinishJob(job);
 			continue;
 		}
 
-		noJobCount++;
-		if (noJobCount > 20000) {
-			std::this_thread::sleep_for(std::chrono::microseconds(250));
-		}
+		//noJobCount++;
+		//if (noJobCount > 20000) {
+		//	std::this_thread::sleep_for(std::chrono::microseconds(250));
+		//}
 
-		_executeExternalJobFunction();
+		_jobsystem->ExecuteJob(JobPriority::Low);
 	}
 
 	_isRunningConditionalVariable.notify_all();
 	//std::cout << "Worker has exited!" << std::endl;
 }
 
-JobSystemWorker::JobSystemWorker(executeExternalFunction executeExternalJobFunction)
+JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
 {
-	_executeExternalJobFunction = executeExternalJobFunction;
+	_jobsystem = jobsystem;
 	Active = false;
 }
 
 JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
 {
-	_executeExternalJobFunction = worker._executeExternalJobFunction;
+	_jobsystem = worker._jobsystem;
 	_lowPriorityTaskQueue = worker._lowPriorityTaskQueue;
 	_normalPriorityTaskQueue = worker._normalPriorityTaskQueue;
 	_highPriorityTaskQueue = worker._highPriorityTaskQueue;
@@ -75,7 +77,7 @@ void JobSystemWorker::Start()
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
-JobBase* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
+Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 {
 	//Return a result based on priority of a job
 
@@ -104,7 +106,7 @@ JobBase* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestme
 	return nullptr;
 }
 
-void JbSystem::JobSystemWorker::GiveJob(JobBase* newJob)
+void JbSystem::JobSystemWorker::GiveJob(Job* newJob)
 {
 	const JobPriority timeInvestment = newJob->GetPriority();
 
@@ -118,14 +120,14 @@ void JbSystem::JobSystemWorker::GiveJob(JobBase* newJob)
 	_queueMutex.unlock();
 }
 
-void JbSystem::JobSystemWorker::FinishJob(JobBase*& job)
+void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
 	const int jobId = job->GetId();
 	_completedJobsMutex.lock();
 	if (!_completedJobs.contains(jobId))
-		_completedJobs.emplace(job->GetId());
+		_completedJobs.emplace(jobId);
 	_completedJobsMutex.unlock();
-	delete job;
+	job->Free();
 }
 
 bool JbSystem::JobSystemWorker::IsJobFinished(const int jobId)

@@ -1,14 +1,11 @@
 #pragma once
+
 #include <memory>
 #include <vector>
 #include <functional>
 #include <type_traits>
 
 namespace JbSystem {
-	//Function able to call a function with parameters
-	template<class... Args>
-	class Job;
-
 	enum class JobPriority {
 		/// <summary>
 		/// Doesn't represent any job
@@ -29,10 +26,10 @@ namespace JbSystem {
 		Low = 2
 	};
 
-	class JobBase {
+	class Job {
 	public:
-		JobBase() = delete;
-		virtual ~JobBase() = default;
+		Job() = delete;
+		virtual void Free() = 0;
 		const int GetId() const;
 		const JobPriority GetPriority() const;
 
@@ -40,11 +37,12 @@ namespace JbSystem {
 			_basefunction(this);
 		}
 
-	protected:
-		typedef void(*Function)(const JobBase*);
+		static const int RequestUniqueID();
 
-		JobBase(const JobPriority priority, const Function callback);
-		JobBase(const int id, const JobPriority priority, const Function callback);
+	protected:
+		typedef void(*Function)(const Job*);
+
+		Job(const int id, const JobPriority priority, const Function callback);
 
 		const Function _basefunction;
 		const int _id;
@@ -53,60 +51,100 @@ namespace JbSystem {
 
 	//function with parameters
 	template<class... Args>
-	class Job : public JobBase {
-		typedef std::tuple<Args...> Parameters;
+	class JobWithParameters : public Job {
+		using Parameters = std::tuple<Args...>;
 	public:
 		typedef void(*Function)(Args...);
 
-		virtual ~Job() = default;
+		void Free() override { delete this; };
 
-		Job(const JobPriority priority, const Function function, Args... parameters)
-			: JobBase(priority,
-				[](auto base) { static_cast<const Job<Args...>*>(base)->Run(); }),
-			_function(function), _parameters(parameters...) {
-		}
+		JobWithParameters(const JobPriority priority, const Function function, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), priority, function, std::forward<Args>(parameters)...) {}
 
 		inline void Run() const {
 			std::apply(_function, _parameters);
 		}
 
-		Job operator=(const Job& otherJob) {
-			return Job(otherJob._function, otherJob._basefunction, otherJob._priority, otherJob._id, otherJob._parameters);
+		inline JobWithParameters operator=(const Job& otherJob) {
+			return JobWithParameters(otherJob._function, otherJob._basefunction, otherJob._priority, otherJob._id, otherJob._parameters);
 		}
 
 	private:
-		Job(const Function function, const JobBase::Function baseFunction, const JobPriority priority, const int id, Parameters parameters)
-			: JobBase(id, priority, baseFunction), _function(function), _parameters(parameters) {
+		JobWithParameters(const int id, const JobPriority priority, const Function function, Args... parameters)
+			: Job(id,
+				priority,
+				[](const Job* base) { static_cast<const JobWithParameters<Args...>*>(base)->Run(); }),
+			_function(function), _parameters(parameters...) {
 		}
-		Function _function;
+
+		JobWithParameters(const Function function, const Job::Function baseFunction, const JobPriority priority, const int id, Parameters parameters)
+			: JobWithParameters(id, priority, baseFunction), _function(function), _parameters(parameters) {
+		}
+
+		const Function _function;
 		const Parameters _parameters;
 	};
 
+	template<class... Args>
+	class JobSystemWithParametersJob : public JobWithParameters<Args...> {
+	public:
+		struct Tag {};
+		typedef void(*DeconstructorCallback)(JobSystemWithParametersJob*);
+
+		void Free() override {
+			_deconstructorCallback(this);
+		}
+
+		JobSystemWithParametersJob(const JobPriority priority, const Function function, DeconstructorCallback deconstructorCallback, Args... parameters)
+			: JobWithParameters(priority, function, std::forward<Args>(parameters)...), _deconstructorCallback(deconstructorCallback) {}
+
+	private:
+		const DeconstructorCallback _deconstructorCallback;
+	};
+
 	//void function
-	template<>
-	class Job<> : public JobBase {
+	class JobVoid : public Job {
 	public:
 		typedef void(*Function)();
 
-		Job(Function function, const JobPriority priority)
-			: JobBase(priority,
-				[](auto base) { static_cast<const Job<>*>(base)->Run(); }),
-			_function(function) {
-		}
+		void Free() override { delete this; };
 
-		void Run() const {
+		JobVoid(const JobPriority priority, const Function function) : JobVoid(Job::RequestUniqueID(), function, priority) {}
+
+		inline void Run() const {
 			_function();
 		}
 
-		Job operator=(const Job& otherJob) {
-			return Job(otherJob._function, otherJob._basefunction, otherJob._priority, otherJob._id);
+		inline JobVoid operator=(const JobVoid& otherJob) {
+			return JobVoid(otherJob._function, otherJob._basefunction, otherJob._priority, otherJob._id);
 		}
 
 	private:
-		Job(const Function function, const JobBase::Function baseFunction, const JobPriority priority, const int id)
-			: JobBase(id, priority, baseFunction), _function(function) {
+		JobVoid(const int id, const Function function, const JobPriority priority)
+			: Job(id,
+				priority,
+				[](const Job* base) { static_cast<const JobVoid*>(base)->Run(); }),
+			_function(function) {
 		}
 
-		Function _function;
+		JobVoid(const Function function, const Job::Function baseFunction, const JobPriority priority, const int id)
+			: Job(id, priority, baseFunction), _function(function) {
+		}
+
+		const Function _function;
+	};
+
+	class JobSystemVoidJob : public JobVoid {
+	public:
+		typedef void(*DeconstructorCallback)(JobSystemVoidJob*);
+
+		void Free() override {
+			_deconstructorCallback(this);
+		}
+
+		JobSystemVoidJob(const JobPriority priority, const Function function, const DeconstructorCallback deconstructorCallback)
+			: JobVoid(priority, function), _deconstructorCallback(deconstructorCallback) {}
+
+	private:
+		const DeconstructorCallback _deconstructorCallback;
 	};
 }

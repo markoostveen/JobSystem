@@ -12,22 +12,22 @@ using namespace JbSystem;
 //{
 //}
 
-const int JbSystem::JobBase::GetId() const
+const int JbSystem::Job::GetId() const
 {
 	return _id;
 }
 
-const JobPriority JbSystem::JobBase::GetPriority() const
+const JobPriority JbSystem::Job::GetPriority() const
 {
 	return _priority;
 }
 
-static std::atomic<int> Identifier; // Use atomic to ensure that value is only incremented once
-JbSystem::JobBase::JobBase(const JobPriority priority, const Function callback)
-	: _id(Identifier++), _basefunction(callback), _priority(priority)
+static std::atomic<int> Identifier;
+const int JbSystem::Job::RequestUniqueID()
 {
+	return Identifier++;
 }
 
-JbSystem::JobBase::JobBase(const int id, const JobPriority priority, const Function callback)
+JbSystem::Job::Job(const int id, const JobPriority priority, const Function callback)
 	: _id(id), _basefunction(callback), _priority(priority) {
 }

@@ -10,7 +10,8 @@ int main()
 {
 	auto jobSystem = std::make_unique<JobSystem>();
 
-	constexpr int parallelSize = 5000000;
+	constexpr int parallelSize = 1000000;
+	constexpr int batchSize = 100;
 	int iterations = 20;
 
 	//print expected result
@@ -18,31 +19,33 @@ int main()
 
 	auto collection = new std::vector<int>[parallelSize];
 
-	auto largeJob = JobSystem::CreateParallelJob(JobPriority::High, 0, parallelSize, 100,
+	auto largeJob = JobSystem::CreateParallelJob(JobPriority::High, 0, parallelSize, batchSize,
 		[](int index, std::vector<int>* collection, int iterations) {
 			//Do whatever you have too
 
 			collection[index].reserve(iterations);
-			for (int i = 0; i < iterations; i++)
+			for (size_t i = 0; i < iterations; i++)
 			{
-				collection[index].emplace_back(i);
+				collection[index].emplace_back(1);
 			}
 		}, collection, iterations);
-	auto largeJobId = jobSystem->Schedule(largeJob);
+	auto largeJobIds = jobSystem->Schedule(largeJob);
 
-	auto largeJob2 = JobSystem::CreateParallelJob(JobPriority::High, 0, parallelSize, 100,
+	auto largeJob2 = JobSystem::CreateParallelJob(JobPriority::High, 0, parallelSize, batchSize,
 		[](int index, std::vector<int>* collection, int iterations) {
 			//Do whatever you have too
 
-			collection[index].reserve(iterations);
+			auto container = collection[index];
+
 			for (int i = 0; i < iterations; i++)
 			{
-				collection[index][i] += 5;
+				container[i] += 5;
 			}
 		}, collection, iterations);
-	auto largeJob2Id = jobSystem->Schedule(largeJob2);
 
-	jobSystem->WaitForJobCompletion(largeJob2Id);
+	auto largeJob2Ids = jobSystem->Schedule(largeJob2, largeJobIds);
+
+	jobSystem->WaitForJobCompletion(largeJob2Ids);
 
 	//print result
 	int totalSize = 0;

@@ -8,13 +8,13 @@
 #include <unordered_set>
 
 namespace JbSystem {
-	class JobSystemWorker {
-		using executeExternalFunction = std::function<void()>;
+	class JobSystem;
 
+	class JobSystemWorker {
 		friend class JobSystem;
 
 	public:
-		JobSystemWorker(executeExternalFunction executeExternalJobFunction);
+		JobSystemWorker(JobSystem* jobsystem);
 		JobSystemWorker(const JobSystemWorker& worker);
 		~JobSystemWorker();
 
@@ -27,14 +27,14 @@ namespace JbSystem {
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
 
-		JobBase* TryTakeJob(const JobPriority maxTimeInvestment = JobPriority::High);
-		void GiveJob(JobBase* newJob);
+		Job* TryTakeJob(const JobPriority maxTimeInvestment = JobPriority::High);
+		void GiveJob(Job* newJob);
 
 		/// <summary>
 		/// Finishes job and cleans up after
 		/// </summary>
 		/// <param name="job"></param>
-		void FinishJob(JobBase*& job);
+		void FinishJob(Job*& job);
 
 		bool IsJobFinished(const int jobId);
 
@@ -43,12 +43,12 @@ namespace JbSystem {
 	private:
 		void ThreadLoop();
 
-		executeExternalFunction _executeExternalJobFunction;
+		JobSystem* _jobsystem;
 
 		std::mutex _queueMutex;
-		std::queue<JobBase*> _highPriorityTaskQueue;
-		std::queue<JobBase*> _normalPriorityTaskQueue;
-		std::queue<JobBase*> _lowPriorityTaskQueue;
+		std::queue<Job*> _highPriorityTaskQueue;
+		std::queue<Job*> _normalPriorityTaskQueue;
+		std::queue<Job*> _lowPriorityTaskQueue;
 
 		std::mutex _completedJobsMutex;
 		std::unordered_set<int> _completedJobs;
