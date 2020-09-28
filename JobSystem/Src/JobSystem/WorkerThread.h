@@ -3,9 +3,9 @@
 
 #include <thread>
 #include <functional>
-#include <queue>
 #include <mutex>
 #include <unordered_set>
+#include <queue>
 
 namespace JbSystem {
 	class JobSystem;
@@ -45,7 +45,7 @@ namespace JbSystem {
 
 		JobSystem* _jobsystem;
 
-		std::mutex _queueMutex;
+		std::mutex _jobsMutex;
 		std::queue<Job*> _highPriorityTaskQueue;
 		std::queue<Job*> _normalPriorityTaskQueue;
 		std::queue<Job*> _lowPriorityTaskQueue;

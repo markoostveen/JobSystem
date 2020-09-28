@@ -12,21 +12,13 @@ void JobSystemWorker::ThreadLoop() {
 	std::unique_lock ul(_isRunningMutex);
 	//std::cout << "Worker has started" << std::endl;
 
-	//int noJobCount = 0;
-
 	while (Active) {
 		Job* job = TryTakeJob();
 		if (job != nullptr) {
-			//noJobCount = 0;
 			job->Run();
 			FinishJob(job);
 			continue;
 		}
-
-		//noJobCount++;
-		//if (noJobCount > 20000) {
-		//	std::this_thread::sleep_for(std::chrono::microseconds(250));
-		//}
 
 		_jobsystem->ExecuteJob(JobPriority::Low);
 	}
@@ -44,9 +36,6 @@ JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
 JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
 {
 	_jobsystem = worker._jobsystem;
-	_lowPriorityTaskQueue = worker._lowPriorityTaskQueue;
-	_normalPriorityTaskQueue = worker._normalPriorityTaskQueue;
-	_highPriorityTaskQueue = worker._highPriorityTaskQueue;
 	Active = false;
 }
 
@@ -81,27 +70,36 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 {
 	//Return a result based on priority of a job
 
-	_queueMutex.lock();
-	if (!_highPriorityTaskQueue.empty() && maxTimeInvestment >= JobPriority::High) {
-		auto value = _highPriorityTaskQueue.front();
-		_highPriorityTaskQueue.pop();
-		_queueMutex.unlock();
-		return value;
-	}
-	else if (!_normalPriorityTaskQueue.empty() && maxTimeInvestment >= JobPriority::Normal) {
-		auto value = _normalPriorityTaskQueue.front();
-		_normalPriorityTaskQueue.pop();
-		_queueMutex.unlock();
-		return value;
-	}
-	else if (!_lowPriorityTaskQueue.empty() && maxTimeInvestment >= JobPriority::Low) {
-		auto value = _lowPriorityTaskQueue.front();
-		_lowPriorityTaskQueue.pop();
-		_queueMutex.unlock();
-		return value;
+	_jobsMutex.lock();
+	Job* value = nullptr;
+	if (maxTimeInvestment >= JobPriority::High) {
+		if (!_highPriorityTaskQueue.empty()) {
+			value = _highPriorityTaskQueue.front();
+			_highPriorityTaskQueue.pop();
+			_jobsMutex.unlock();
+			return value;
+		}
 	}
 
-	_queueMutex.unlock();
+	if (maxTimeInvestment >= JobPriority::Normal) {
+		if (!_normalPriorityTaskQueue.empty()) {
+			value = _normalPriorityTaskQueue.front();
+			_normalPriorityTaskQueue.pop();
+			_jobsMutex.unlock();
+			return value;
+		}
+	}
+
+	if (maxTimeInvestment >= JobPriority::Low) {
+		if (!_lowPriorityTaskQueue.empty()) {
+			value = _lowPriorityTaskQueue.front();
+			_lowPriorityTaskQueue.pop();
+			_jobsMutex.unlock();
+			return value;
+		}
+	}
+
+	_jobsMutex.unlock();
 
 	return nullptr;
 }
@@ -110,14 +108,20 @@ void JbSystem::JobSystemWorker::GiveJob(Job* newJob)
 {
 	const JobPriority timeInvestment = newJob->GetPriority();
 
-	_queueMutex.lock();
-	if (timeInvestment == JobPriority::High)
+	_jobsMutex.lock();
+	if (timeInvestment == JobPriority::High) {
 		_highPriorityTaskQueue.emplace(newJob);
-	else if (timeInvestment == JobPriority::Normal)
+	}
+
+	else if (timeInvestment == JobPriority::Normal) {
 		_normalPriorityTaskQueue.emplace(newJob);
-	else if (timeInvestment == JobPriority::Low)
+	}
+
+	else if (timeInvestment == JobPriority::Low) {
 		_lowPriorityTaskQueue.emplace(newJob);
-	_queueMutex.unlock();
+	}
+
+	_jobsMutex.unlock();
 }
 
 void JbSystem::JobSystemWorker::FinishJob(Job*& job)

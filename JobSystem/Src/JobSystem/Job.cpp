@@ -29,5 +29,5 @@ const int JbSystem::Job::RequestUniqueID()
 }
 
 JbSystem::Job::Job(const int id, const JobPriority priority, const Function callback)
-	: _id(id), _basefunction(callback), _priority(priority) {
+	: _basefunction(callback), _id(id), _priority(priority) {
 }

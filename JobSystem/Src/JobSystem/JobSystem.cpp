@@ -11,7 +11,8 @@ namespace JbSystem {
 
 	JobSystem::~JobSystem()
 	{
-		Shutdown();
+		auto remainingJobs = Shutdown();
+		delete remainingJobs;
 	}
 
 	void JobSystem::ReConfigure(const int threadCount)
@@ -36,6 +37,7 @@ namespace JbSystem {
 		if (!firstStartup) {
 			auto lastBatchOfJobs = StealAllJobsFromWorkers();
 			jobs->insert(jobs->begin(), lastBatchOfJobs->begin(), lastBatchOfJobs->end());
+			delete lastBatchOfJobs;
 		}
 
 		//std::cout << "JobSystem is starting" << std::endl;
@@ -70,13 +72,13 @@ namespace JbSystem {
 						iteration++;
 					}
 				};
+				delete jobs;
 			};
 
 			const int rescheduleJob = Schedule(CreateJob(JobPriority::Low, rescheduleJobFunction, this, jobs));
 
 			//wait for rescheduling to be done, then return the caller
 			WaitForJobCompletion(rescheduleJob);
-			delete jobs;
 		}
 
 		//std::cout << "JobSystem started with " << threadCount << " workers!" << std::endl;
@@ -85,15 +87,15 @@ namespace JbSystem {
 	std::vector<Job*>* JbSystem::JobSystem::Shutdown()
 	{
 		//Wait for jobsystem to finish remaining jobs
-		size_t realScheduledJobs = 0;
-		while (realScheduledJobs > 0) {
-			realScheduledJobs = 0;
+		bool finished = false;
+		while (!finished) {
 			for (int i = 0; i < _workerCount; i++)
 			{
-				realScheduledJobs += _workers[i]._highPriorityTaskQueue.size();
-				realScheduledJobs += _workers[i]._normalPriorityTaskQueue.size();
-				realScheduledJobs += _workers[i]._lowPriorityTaskQueue.size();
+				if (!_workers[i]._highPriorityTaskQueue.empty()) continue;
+				if (!_workers[i]._normalPriorityTaskQueue.empty()) continue;
+				if (!_workers[i]._lowPriorityTaskQueue.empty()) continue;
 			}
+			finished = true;
 		}
 
 		//Let worker safely shutdown and complete active last job
@@ -365,23 +367,24 @@ namespace JbSystem {
 	void JobSystem::WaitForJobCompletion(std::vector<int>& jobIds, JobPriority maximumHelpEffort)
 	{
 		// Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
-		bool* finished = new bool(false);
-		auto waitLambda = [](bool* finished)
+		std::atomic<bool>* finished = new std::atomic<bool>(false);
+		auto waitLambda = [](std::atomic<bool>* finished)
 		{
-			*finished = true;
+			finished->store(true);
 		};
 		WaitForJobCompletion(jobIds, waitLambda, finished);
-		while (!*finished) { ExecuteJob(maximumHelpEffort); }
+		while (!finished->load()) { ExecuteJob(maximumHelpEffort); }
 		delete finished;
 	}
 
 	void JobSystem::ExecuteJobFromWorker(const JobPriority maxTimeInvestment)
 	{
 		int worker = rand() % _workerCount;
-		Job* job = _workers[worker].TryTakeJob(maxTimeInvestment);
+		JobSystemWorker& workerThread = _workers[worker];
+		Job* job = workerThread.TryTakeJob(maxTimeInvestment);
 		if (job != nullptr) {
 			job->Run();
-			_workers[worker].FinishJob(job);
+			workerThread.FinishJob(job);
 		}
 	}
 

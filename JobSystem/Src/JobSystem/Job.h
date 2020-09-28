@@ -94,8 +94,8 @@ namespace JbSystem {
 			_deconstructorCallback(this);
 		}
 
-		JobSystemWithParametersJob(const JobPriority priority, const Function function, DeconstructorCallback deconstructorCallback, Args... parameters)
-			: JobWithParameters(priority, function, std::forward<Args>(parameters)...), _deconstructorCallback(deconstructorCallback) {}
+		JobSystemWithParametersJob(const JobPriority priority, const JobWithParameters<Args...>::Function function, DeconstructorCallback deconstructorCallback, Args... parameters)
+			: JobWithParameters<Args...>(priority, function, std::forward<Args>(parameters)...), _deconstructorCallback(deconstructorCallback) {}
 
 	private:
 		const DeconstructorCallback _deconstructorCallback;
