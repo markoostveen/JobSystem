@@ -9,9 +9,9 @@ int main() {
 
 	auto jobFunction = []() {};
 
-	jobsystem->Schedule(JobSystem::CreateJob(JobPriority::Normal, jobFunction));
-	jobsystem->Schedule(JobSystem::CreateJob(JobPriority::Normal, jobFunction));
-	jobsystem->Schedule(JobSystem::CreateJob(JobPriority::Normal, jobFunction));
+	jobsystem->Schedule(JobSystem::CreateJob(jobFunction));
+	jobsystem->Schedule(JobSystem::CreateJob(jobFunction));
+	jobsystem->Schedule(JobSystem::CreateJob(jobFunction));
 
 	jobsystem->ExecuteJob();
 	jobsystem->ExecuteJob();

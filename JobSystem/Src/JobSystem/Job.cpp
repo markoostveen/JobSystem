@@ -28,6 +28,6 @@ const int JbSystem::Job::RequestUniqueID()
 	return Identifier++;
 }
 
-JbSystem::Job::Job(const int id, const JobPriority priority, const Function callback)
-	: _basefunction(callback), _id(id), _priority(priority) {
+JbSystem::Job::Job(const int id, const JobPriority priority, const Function callback, const DestructorFunction destructorfunction)
+	: _basefunction(callback), _destructorfunction(destructorfunction), _id(id), _priority(priority) {
 }

@@ -10,8 +10,8 @@ using namespace JbSystem;
 bool RunSimpleParallelJobs() {
 	auto jobSystem = JobSystem::GetInstance();
 
-	auto job = JobSystem::CreateParallelJob(JobPriority::High, 0, 10000, 100, [](int index) {});
-	std::vector<int> jobIds = jobSystem->Schedule(job);
+	auto job = JobSystem::CreateParallelJob(JobPriority::High, 0, 10000, 100, [](const int& index) {});
+	auto jobIds = jobSystem->Schedule(job);
 
 	jobSystem->WaitForJobCompletion(jobIds);
 	return true;
@@ -20,21 +20,21 @@ bool RunSimpleParallelJobs() {
 bool RunDependendParallelJobs() {
 	auto jobSystem = JbSystem::JobSystem::GetInstance();
 
-	auto job1 = JobSystem::CreateParallelJob(JobPriority::High, 0, 10000, 100, [](int index) {});
-	std::vector<int> jobIds = jobSystem->Schedule(job1);
+	auto job1 = JobSystem::CreateParallelJob(JobPriority::High, 0, 10000, 100, [](const int& index) {});
+	auto jobIds = jobSystem->Schedule(job1);
 
-	auto job2 = JobSystem::CreateParallelJob(JobPriority::Normal, 0, 10000, 100, [](int index) {});
-	std::vector<int> jobIds2 = jobSystem->Schedule(job2);
+	auto job2 = JobSystem::CreateParallelJob(0, 10000, 100, [](const int& index) {});
+	auto jobIds2 = jobSystem->Schedule(job2);
 
-	auto singleJob = JobSystem::CreateJob(JobPriority::Normal, []() {});
+	auto singleJob = JobSystem::CreateJob([]() {});
 	int singleJobId = jobSystem->Schedule(singleJob, jobIds);
 	jobIds2.emplace_back(singleJobId);
 
-	auto job3 = JobSystem::CreateParallelJob(JobPriority::Normal, 0, 10000, 100, [](int index) {});
-	std::vector<int> jobIds3 = jobSystem->Schedule(job3, jobIds2);
+	auto job3 = JobSystem::CreateParallelJob(0, 10000, 100, [](const int& index) {});
+	auto jobIds3 = jobSystem->Schedule(job3, jobIds2);
 
 	auto job4 = JobSystem::CreateJob(JobPriority::Low, []() {});
-	int controlJobId = jobSystem->Schedule(job4, jobIds3);
+	auto controlJobId = jobSystem->Schedule(job4, jobIds3);
 
 	jobSystem->WaitForJobCompletion(controlJobId);
 	return true;

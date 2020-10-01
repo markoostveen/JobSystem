@@ -1,14 +1,17 @@
-#include "JobSystem/Jobsystem.h"
+#include "JobSystem/JobSystem.h"
 
 #include <iostream>
 
 using namespace JbSystem;
 
-void TestFunction() {
+#pragma region Benchmark function
+//Make sure that function loads the CPU enough because small tasks might have to much overhead to fully use the CPU
+
+void TestFunction(const int& i) {
 }
 
-constexpr int ArraySize = 1000;
-void CopyArrayValues(int index, void(*function)()) {
+constexpr int ArraySize = 100;
+void CopyArrayValues(const int& index, void(*function)(const int&)) {
 	int a[ArraySize];
 	int b[ArraySize];
 	for (size_t i = 0; i < ArraySize; i++)
@@ -20,13 +23,33 @@ void CopyArrayValues(int index, void(*function)()) {
 		b[i] = a[i];
 	}
 
-	function();
+	function(index);
+	function(index);
+	function(index);
+	function(index);
+	function(index);
+}
+#pragma endregion
+
+constexpr int JobCount = 1000000;
+constexpr int MasterJobs = 25;
+
+int scheduleSmallJobs(JobSystem*& jobsystem) {
+	auto jobs = JobSystem::CreateParallelJob(JobPriority::High, 0, JobCount, 1000, TestFunction);
+	auto JobIds = jobsystem->Schedule(jobs);
+	auto masterJob = JobSystem::CreateJob([]() {});
+	return jobsystem->Schedule(masterJob, JobIds);
 }
 
-constexpr int JobCount = 100000;
-constexpr int MasterJobs = 10;
+int ScheduleJobs(JobSystem*& jobsystem) {
+	auto jobs = JobSystem::CreateParallelJob(0, JobCount, 10000, CopyArrayValues, TestFunction);
+	auto JobIds = jobsystem->Schedule(jobs);
+	auto masterJob = JobSystem::CreateJob([](JobSystem* jobsystem) { scheduleSmallJobs(jobsystem); }, jobsystem);
+	return jobsystem->Schedule(masterJob, JobIds);
+}
+
 double RunBenchmark(int threadCount) {
-	JobSystem* customJobSystem = new JobSystem(threadCount);
+	JobSystem* customJobSystem = new JobSystem(threadCount - 1);
 
 	std::chrono::time_point start = std::chrono::high_resolution_clock::now();
 
@@ -35,11 +58,7 @@ double RunBenchmark(int threadCount) {
 
 	for (size_t i = 0; i < MasterJobs; i++)
 	{
-		auto jobs = JobSystem::CreateParallelJob(0, JobCount, 1000, CopyArrayValues, TestFunction);
-		auto JobIds = customJobSystem->Schedule(jobs);
-		auto masterJob = JobSystem::CreateJob([]() {});
-		auto masterJobId = customJobSystem->Schedule(masterJob, JobIds);
-		masterJobs.emplace_back(masterJobId);
+		masterJobs.emplace_back(ScheduleJobs(customJobSystem));
 	}
 
 	customJobSystem->WaitForJobCompletion(masterJobs);
@@ -54,7 +73,7 @@ constexpr int repeatBenchmarkTimes = 20;
 int main() {
 	int threadCount;
 	double time = 0;
-	for (size_t i = 1; i < 20; i++)
+	for (size_t i = 2; i < 20; i++)
 	{
 		threadCount = i * 2;
 		time = 0;
@@ -66,7 +85,7 @@ int main() {
 		std::cout << threadCount << " took " << time / repeatBenchmarkTimes << "ms" << std::endl;
 	}
 
-	for (size_t i = 20; i > 1; i--)
+	for (size_t i = 20; i > 2; i--)
 	{
 		threadCount = i * 2;
 		time = 0;

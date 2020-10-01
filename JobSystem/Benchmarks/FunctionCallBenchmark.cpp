@@ -6,11 +6,11 @@
 
 using namespace JbSystem;
 constexpr int totalIterations = 100000;
-constexpr int repeatBeforeValid = 100;
+constexpr int repeatBeforeValid = 1000;
 
-int x;
-void TestCall() {
-	x++;
+std::atomic<int> x;
+inline void TestCall() {
+	x.store(x.load());
 }
 
 double CallDirect() {
@@ -22,7 +22,7 @@ double CallDirect() {
 	}
 
 	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
-	return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
 
 double CallJobStack() {
@@ -35,21 +35,21 @@ double CallJobStack() {
 	}
 
 	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
-	return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
 
 double CallJobHeap() {
 	std::chrono::time_point start = std::chrono::high_resolution_clock::now();
-	Job* job = JobSystem::CreateJob(JobPriority::None, TestCall);
+	Job* job = JobSystem::CreateJob(TestCall);
 
 	for (size_t i = 0; i < totalIterations; i++)
 	{
 		job->Run();
 	}
 
-	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
 	job->Free();
-	return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
 
 void SimpleCallBenchmark() {
@@ -64,12 +64,27 @@ void SimpleCallBenchmark() {
 		totalTimeJobHeap += CallJobHeap();
 	}
 
-	std::cout << "direct calls per " << totalIterations << " times took " << totalTimeDirect / repeatBeforeValid << "us" << std::endl;
-	std::cout << "job on stack calls per " << totalIterations << " times took " << totalTimeJob / repeatBeforeValid << "us" << std::endl;
-	std::cout << "job on heap calls per " << totalIterations << " times took " << totalTimeJobHeap / repeatBeforeValid << "us" << std::endl;
+	double directAverageTime = totalTimeDirect / repeatBeforeValid;
+	double jobAverageTime = totalTimeJob / repeatBeforeValid;
+	double heapAverageTime = totalTimeJobHeap / repeatBeforeValid;
+
+	std::cout << "direct calls per " << totalIterations << " times took " << directAverageTime / 1000 << "us" << std::endl;
+	std::cout << "job on stack calls per " << totalIterations << " times took " << jobAverageTime / 1000 << "us" << std::endl;
+	std::cout << "job on heap calls per " << totalIterations << " times took " << heapAverageTime / 1000 << "us" << std::endl;
+
+	std::cout << "Average over " << repeatBeforeValid << " runs" << std::endl;
+
+	std::cout << std::endl;
+	std::cout << "direct calls vs Stack average difference per call " << (jobAverageTime - directAverageTime) / totalIterations << "ns" << std::endl;
+	std::cout << "direct calls vs Heap average difference per call " << (heapAverageTime - directAverageTime) / totalIterations << "ns" << std::endl;
+	std::cout << "=======" << std::endl;
 }
 
 int main() {
-	SimpleCallBenchmark();
+	for (size_t i = 0; i < 10; i++)
+	{
+		std::cout << "Run #" << i << std::endl;
+		SimpleCallBenchmark();
+	}
 	return 0;
 }

@@ -43,13 +43,13 @@ namespace JbSystem {
 
 		//Parallel
 		template<class ...Args>
-		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<int, Args...>::Function function, Args... args);
+		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args... args);
 		template<class ...Args>
-		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<int, Args...>::Function function, Args... args) {
+		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args... args) {
 			return CreateParallelJob(JobPriority::Normal, startIndex, endIndex, batchSize, function, std::forward<Args>(args)...);
 		}
-		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, void (*function)(int));
-		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(int startIndex, int endIndex, int batchSize, void (*function)(int)) {
+		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, void (*function)(const int&));
+		static std::shared_ptr<std::vector<Job*>> CreateParallelJob(int startIndex, int endIndex, int batchSize, void (*function)(const int&)) {
 			return CreateParallelJob(JobPriority::Normal, startIndex, endIndex, batchSize, function);
 		}
 
@@ -186,11 +186,11 @@ namespace JbSystem {
 	}
 
 	template<class ...Args>
-	std::shared_ptr<std::vector<Job*>> JobSystem::CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<int, Args...>::Function function, Args ...args)
+	std::shared_ptr<std::vector<Job*>> JobSystem::CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args ...args)
 	{
 		auto jobs = std::make_shared<std::vector<Job*>>();
 
-		auto parallelFunction = [](typename JobSystemWithParametersJob<int, Args...>::Function callback, int startIndex, int endIndex, Args ...args)
+		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int startIndex, int endIndex, Args ...args)
 		{
 			for (int i = startIndex; i < endIndex; i++)
 			{

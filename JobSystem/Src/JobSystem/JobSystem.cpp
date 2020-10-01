@@ -191,7 +191,7 @@ namespace JbSystem {
 		return new(location) JobSystemVoidJob(priority, function, deconstructorCallback);
 	}
 
-	std::shared_ptr<std::vector<Job*>> JobSystem::CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, void(*function)(int))
+	std::shared_ptr<std::vector<Job*>> JobSystem::CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, void(*function)(const int&))
 	{
 		auto jobs = std::make_shared<std::vector<Job*>>();
 
