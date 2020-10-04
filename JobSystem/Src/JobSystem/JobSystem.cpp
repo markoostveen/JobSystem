@@ -126,28 +126,17 @@ namespace JbSystem {
 	{
 		const int jobId = newjob->GetId();
 
-#ifdef DEBUG
-		if (_workerCount != 0) {
-#endif
-			int worker = GetRandomWorker();
-			_workers[worker].GiveJob(newjob);
+		Schedule(GetRandomWorker(), newjob);
 
-			// Make sure that all workers are still running correctly
-			_schedulesTillMaintainance--;
-			if (_schedulesTillMaintainance == 0) {
-				//std::cout << "Validating Jobsystem threads" << std::endl;
-				_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
-				Schedule(CreateJob(JobPriority::High, [](JobSystem* JobSystem) -> void { JobSystem->Cleanup(); }, this));
-			}
+		// Make sure that all workers are still running correctly
+		_schedulesTillMaintainance--;
+		if (_schedulesTillMaintainance == 0) {
+			//std::cout << "Validating Jobsystem threads" << std::endl;
+			_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
+			Schedule(CreateJob(JobPriority::High, [](JobSystem* JobSystem) -> void { JobSystem->Cleanup(); }, this));
+		}
 
-			return jobId;
-#ifdef DEBUG
-		}
-		else {
-			std::cout << "Jobsystem is not running, please start it explicitly. This job is now floating in the void!" << std::endl;
-			throw 1;
-		}
-#endif
+		return jobId;
 	}
 
 	const int JobSystem::Schedule(Job* job, const std::vector<int> dependencies)
@@ -164,8 +153,7 @@ namespace JbSystem {
 
 	const std::vector<int> JobSystem::Schedule(std::shared_ptr<std::vector<Job*>> newjobs)
 	{
-		auto returnValue = BatchScheduleJob(newjobs.get());
-		return returnValue;
+		return BatchScheduleJob(newjobs.get());
 	}
 
 	Job* JobSystem::CreateJob(const JobPriority priority, void(*function)())
@@ -225,43 +213,32 @@ namespace JbSystem {
 
 	std::vector<int> JobSystem::BatchScheduleJob(const std::vector<Job*>* newjobs)
 	{
-#ifdef DEBUG
-		if (_workerCount != 0) {
-#endif
-			auto workerIds = BatchScheduleFutureJob(newjobs);
+		auto workerIds = BatchScheduleFutureJob(newjobs);
 
-			for (size_t i = 0; i < workerIds.size(); i++)
-			{
-				_workers[workerIds[i]].GiveJob(newjobs->at(i));
+		for (size_t i = 0; i < workerIds.size(); i++)
+		{
+			Schedule(workerIds[i], newjobs->at(i));
 
-				// Make sure that all workers are still running correctly
-				_schedulesTillMaintainance--;
-			}
-
-			if (_schedulesTillMaintainance <= 0) {
-				//std::cout << "Validating Jobsystem threads" << std::endl;
-				_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
-
-				Schedule(CreateJob(JobPriority::Normal, [](JobSystem* jobsystem) { jobsystem->Cleanup(); }, this));
-			}
-
-			std::vector<int> jobIds;
-			size_t jobCount = newjobs->size();
-			jobIds.reserve(jobCount);
-			for (size_t i = 0; i < jobCount; i++)
-			{
-				jobIds.emplace_back(newjobs->at(i)->GetId());
-			}
-
-			return jobIds;
-
-#ifdef DEBUG
+			// Make sure that all workers are still running correctly
+			_schedulesTillMaintainance--;
 		}
-		else {
-			std::cout << "Jobsystem is not running, please start it explicitly. This job is now floating in the void!" << std::endl;
-			throw 1;
+
+		if (_schedulesTillMaintainance <= 0) {
+			//std::cout << "Validating Jobsystem threads" << std::endl;
+			_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
+
+			Schedule(CreateJob(JobPriority::Normal, [](JobSystem* jobsystem) { jobsystem->Cleanup(); }, this));
 		}
-#endif
+
+		std::vector<int> jobIds;
+		size_t jobCount = newjobs->size();
+		jobIds.reserve(jobCount);
+		for (size_t i = 0; i < jobCount; i++)
+		{
+			jobIds.emplace_back(newjobs->at(i)->GetId());
+		}
+
+		return jobIds;
 	}
 
 	std::vector<int> JobSystem::BatchScheduleFutureJob(const std::vector<Job*>* newjobs)
@@ -411,17 +388,12 @@ namespace JbSystem {
 
 	const std::vector<int> JobSystem::Schedule(const std::vector<int>& workerIds, std::shared_ptr<std::vector<Job*>> newjobs)
 	{
-		for (size_t i = 0; i < workerIds.size(); i++)
-		{
-			_workers[workerIds[i]].GiveJob(newjobs->at(i));
-		}
-
 		std::vector<int> jobIds;
 		size_t jobCount = newjobs->size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
 		{
-			jobIds.emplace_back(newjobs->at(i)->GetId());
+			jobIds.emplace_back(Schedule(workerIds[i], newjobs->at(i)));
 		}
 
 		return jobIds;
