@@ -29,6 +29,7 @@ namespace JbSystem {
 
 		Job* TryTakeJob(const JobPriority maxTimeInvestment = JobPriority::High);
 		void GiveJob(Job* newJob);
+		void GiveFutureJob(int& jobId);
 
 		/// <summary>
 		/// Finishes job and cleans up after
@@ -36,7 +37,8 @@ namespace JbSystem {
 		/// <param name="job"></param>
 		void FinishJob(Job*& job);
 
-		bool IsJobFinished(const int jobId);
+		bool IsJobScheduled(const int& jobId);
+		bool IsJobFinished(const int& jobId);
 
 		//Is the read suppost to be active
 		bool Active;
@@ -52,6 +54,8 @@ namespace JbSystem {
 
 		std::mutex _completedJobsMutex;
 		std::unordered_set<int> _completedJobs;
+		std::mutex _scheduledJobsMutex;
+		std::unordered_set<int> _scheduledJobs;
 
 		std::mutex _isRunningMutex;
 		std::condition_variable _isRunningConditionalVariable;

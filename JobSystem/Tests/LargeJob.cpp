@@ -10,7 +10,7 @@ int main()
 {
 	auto jobSystem = std::make_unique<JobSystem>();
 
-	constexpr int parallelSize = 1000000;
+	constexpr int parallelSize = 10000000;
 	constexpr int batchSize = 100;
 	int iterations = 20;
 
@@ -23,10 +23,12 @@ int main()
 		[](const int& index, std::vector<int>* collection, int iterations) {
 			//Do whatever you have too
 
-			collection[index].reserve(iterations);
+			//std::cout << "Job 1" << std::endl;
+			auto& vector = collection[index];
+			vector.reserve(iterations);
 			for (size_t i = 0; i < iterations; i++)
 			{
-				collection[index].emplace_back(1);
+				vector.emplace_back(1);
 			}
 		}, collection, iterations);
 	auto largeJobIds = jobSystem->Schedule(largeJob);
@@ -35,11 +37,12 @@ int main()
 		[](const int& index, std::vector<int>* collection, int iterations) {
 			//Do whatever you have too
 
-			auto container = collection[index];
+			//std::cout << "Job 2" << std::endl;
+			auto& container = collection[index];
 
 			for (int i = 0; i < iterations; i++)
 			{
-				container[i] += 5;
+				container.at(i) += 5;
 			}
 		}, collection, iterations);
 

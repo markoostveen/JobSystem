@@ -31,13 +31,13 @@ namespace JbSystem {
 		template<class ...Args>
 		static Job* CreateJob(const JobPriority priority, typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
 		template<class ...Args>
-		static Job* CreateJob(typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
+		inline static Job* CreateJob(typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
 		{
 			return CreateJob(JobPriority::Normal, function, std::forward<Args>(args)...);
 		}
 
 		static Job* CreateJob(const JobPriority priority, void (*function)());
-		static Job* CreateJob(void (*function)()) {
+		inline static Job* CreateJob(void (*function)()) {
 			return CreateJob(JobPriority::Normal, function);
 		}
 
@@ -142,6 +142,10 @@ namespace JbSystem {
 		/// <returns></returns>
 		static std::shared_ptr<JobSystem> GetInstance();
 
+		/// <summary>
+		/// is the job system active or not
+		/// </summary>
+		bool Active = false;
 	private:
 
 		/// <summary>
@@ -158,17 +162,23 @@ namespace JbSystem {
 
 		void Cleanup();
 
+		int GetRandomWorker();
+
+		/// <summary>
+		/// Schedules a job in a specific worker
+		/// </summary>
+		/// <param name="workerId"></param>
+		/// <param name="newjob"></param>
+		/// <returns></returns>
+		const int Schedule(const int& workerId, Job* newjob);
+
+		const std::vector<int> Schedule(const std::vector<int>& workerIds, std::shared_ptr<std::vector<Job*>> newjobs);
+
 		/// <summary>
 		/// Take all scheduled jobs from all workers
 		/// </summary>
 		/// <returns></returns>
 		std::vector<Job*>* StealAllJobsFromWorkers();
-
-		std::mutex _jobsMutex;
-		std::unordered_set<int> _scheduledJobs;
-
-		//Jobs that have been completed
-		//Note: they are ordered in terms of thread Ids, this way we can be sure to have access at the same time
 
 		int _workerCount = 0;
 		std::vector<JobSystemWorker> _workers;
@@ -178,21 +188,24 @@ namespace JbSystem {
 	};
 
 	template<class ...Args>
-	Job* JobSystem::CreateJob(const JobPriority priority, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
+	inline Job* JobSystem::CreateJob(const JobPriority priority, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
 	{
 		void* location = boost::singleton_pool<typename JobSystemWithParametersJob<Args...>::Tag, sizeof(JobSystemWithParametersJob<Args...>)>::malloc();
-		auto deconstructorCallback = [](JobSystemWithParametersJob<Args...>* job) { boost::singleton_pool<typename JobSystemWithParametersJob<Args...>::Tag, sizeof(JobSystemWithParametersJob<Args...>)>::free(job); };
+		auto deconstructorCallback = [](JobSystemWithParametersJob<Args...>* job)
+		{
+			boost::singleton_pool<typename JobSystemWithParametersJob<Args...>::Tag, sizeof(JobSystemWithParametersJob<Args...>)>::free(job);
+		};
 		return new (location) JobSystemWithParametersJob<Args...>(priority, function, deconstructorCallback, std::forward<Args>(args)...);
 	}
 
 	template<class ...Args>
-	std::shared_ptr<std::vector<Job*>> JobSystem::CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args ...args)
+	inline std::shared_ptr<std::vector<Job*>> JobSystem::CreateParallelJob(const JobPriority priority, int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args ...args)
 	{
 		auto jobs = std::make_shared<std::vector<Job*>>();
 
 		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int startIndex, int endIndex, Args ...args)
 		{
-			for (int i = startIndex; i < endIndex; i++)
+			for (int& i = startIndex; i < endIndex; i++)
 			{
 				callback(i, std::forward<Args>(args)...);
 			}
@@ -230,14 +243,14 @@ namespace JbSystem {
 		const std::vector<int> dependencyArray = { dependencies ... };
 
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
-		const int jobId = ScheduleFutureJob(job);
+		const int workerId = ScheduleFutureJob(job);
 
 		WaitForJobCompletion(dependencyArray,
-			[](auto jobSystem, auto callbackJob)
+			[](auto jobSystem, auto workerId, auto callbackJob)
 			{
-				jobSystem->Schedule(callbackJob);
-			}, this, job);
-		return jobId;
+				jobSystem->Schedule(workerId, callbackJob);
+			}, this, workerId, job);
+		return job->GetId();
 	}
 
 	template<typename ...JobId>
@@ -246,13 +259,21 @@ namespace JbSystem {
 		const std::vector<int> dependencyArray = { dependencies ... };
 
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
-		auto jobIds = BatchScheduleFutureJob(newjobs.get());
+		auto workerIds = BatchScheduleFutureJob(newjobs.get());
 
 		WaitForJobCompletion(dependencyArray,
-			[](auto jobSystem, auto callbackJobs)
+			[](auto jobSystem, auto workerIds, auto callbackJobs)
 			{
-				jobSystem->Schedule(callbackJobs);
-			}, this, newjobs);
+				jobSystem->Schedule(workerIds, callbackJobs);
+			}, this, workerIds, newjobs);
+
+		std::vector<int> jobIds;
+		size_t jobCount = newjobs->size();
+		jobIds.reserve(jobCount);
+		for (size_t i = 0; i < jobCount; i++)
+		{
+			jobIds.emplace_back(newjobs->at(i)->GetId());
+		}
 
 		return jobIds;
 	}
@@ -282,7 +303,7 @@ namespace JbSystem {
 		jobDependencies->reserve(dependencies.size());
 		jobDependencies->insert(jobDependencies->begin(), dependencies.begin(), dependencies.end());
 
-		// run in sync
+		// run in sync, if dependencies have already completed we can immediatly schedule it
 		jobScheduler(jobScheduler, callbackJob, this, jobDependencies);
 	}
 }

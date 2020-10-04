@@ -5,12 +5,10 @@
 #include <chrono>
 
 using namespace JbSystem;
-constexpr int totalIterations = 100000;
+constexpr int totalIterations = 10000;
 constexpr int repeatBeforeValid = 1000;
 
-std::atomic<int> x;
 inline void TestCall() {
-	x.store(x.load());
 }
 
 double CallDirect() {
@@ -27,11 +25,11 @@ double CallDirect() {
 
 double CallJobStack() {
 	std::chrono::time_point start = std::chrono::high_resolution_clock::now();
-	JobVoid test(JobPriority::None, TestCall);
 
 	for (size_t i = 0; i < totalIterations; i++)
 	{
-		test.Run();
+		JobVoid job(JobPriority::None, TestCall);
+		job.Run();
 	}
 
 	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
@@ -40,14 +38,14 @@ double CallJobStack() {
 
 double CallJobHeap() {
 	std::chrono::time_point start = std::chrono::high_resolution_clock::now();
-	Job* job = JobSystem::CreateJob(TestCall);
 
 	for (size_t i = 0; i < totalIterations; i++)
 	{
+		Job* job = JobSystem::CreateJob(JobPriority::None, TestCall);
 		job->Run();
+		job->Free();
 	}
 
-	job->Free();
 	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
 	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }

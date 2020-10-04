@@ -51,7 +51,7 @@ bool RunSimpleJob() {
 bool RunManyDependencyJob() {
 	auto jobSystem = JobSystem::GetInstance();
 
-	auto emptyJobFunction = []() {};
+	auto emptyJobFunction = []() { std::cout << " Running job " << std::endl; };
 
 	int jobId0 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction));
 	int jobId1 = jobSystem->Schedule(JobSystem::CreateJob(JobPriority::High, emptyJobFunction));

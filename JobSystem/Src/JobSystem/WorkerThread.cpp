@@ -70,36 +70,39 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 {
 	//Return a result based on priority of a job
 
-	_jobsMutex.lock();
 	Job* value = nullptr;
 	if (maxTimeInvestment >= JobPriority::High) {
+		_jobsMutex.lock();
 		if (!_highPriorityTaskQueue.empty()) {
 			value = _highPriorityTaskQueue.front();
 			_highPriorityTaskQueue.pop();
 			_jobsMutex.unlock();
 			return value;
 		}
+		_jobsMutex.unlock();
 	}
 
 	if (maxTimeInvestment >= JobPriority::Normal) {
+		_jobsMutex.lock();
 		if (!_normalPriorityTaskQueue.empty()) {
 			value = _normalPriorityTaskQueue.front();
 			_normalPriorityTaskQueue.pop();
 			_jobsMutex.unlock();
 			return value;
 		}
+		_jobsMutex.unlock();
 	}
 
 	if (maxTimeInvestment >= JobPriority::Low) {
+		_jobsMutex.lock();
 		if (!_lowPriorityTaskQueue.empty()) {
 			value = _lowPriorityTaskQueue.front();
 			_lowPriorityTaskQueue.pop();
 			_jobsMutex.unlock();
 			return value;
 		}
+		_jobsMutex.unlock();
 	}
-
-	_jobsMutex.unlock();
 
 	return nullptr;
 }
@@ -107,6 +110,12 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 void JbSystem::JobSystemWorker::GiveJob(Job* newJob)
 {
 	const JobPriority timeInvestment = newJob->GetPriority();
+
+	_scheduledJobsMutex.lock();
+	int jobId = newJob->GetId();
+	if (!_scheduledJobs.contains(jobId))
+		_scheduledJobs.emplace(newJob->GetId());
+	_scheduledJobsMutex.unlock();
 
 	_jobsMutex.lock();
 	if (timeInvestment == JobPriority::High) {
@@ -124,20 +133,44 @@ void JbSystem::JobSystemWorker::GiveJob(Job* newJob)
 	_jobsMutex.unlock();
 }
 
+void JbSystem::JobSystemWorker::GiveFutureJob(int& jobId)
+{
+	_scheduledJobsMutex.lock();
+	_scheduledJobs.emplace(jobId);
+	_scheduledJobsMutex.unlock();
+}
+
 void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
 	const int jobId = job->GetId();
-	_completedJobsMutex.lock();
-	if (!_completedJobs.contains(jobId))
-		_completedJobs.emplace(jobId);
-	_completedJobsMutex.unlock();
 	job->Free();
+	_scheduledJobsMutex.lock();
+	_completedJobsMutex.lock();
+	_scheduledJobs.erase(jobId);
+	_completedJobs.emplace(jobId);
+	_scheduledJobsMutex.unlock();
+	_completedJobsMutex.unlock();
 }
 
-bool JbSystem::JobSystemWorker::IsJobFinished(const int jobId)
+bool JbSystem::JobSystemWorker::IsJobScheduled(const int& jobId)
+{
+	_scheduledJobsMutex.lock();
+	if (_scheduledJobs.contains(jobId)) {
+		_scheduledJobsMutex.unlock();
+		return true;
+	}
+	_scheduledJobsMutex.unlock();
+	return false;
+}
+
+bool JbSystem::JobSystemWorker::IsJobFinished(const int& jobId)
 {
 	_completedJobsMutex.lock();
-	bool contains = _completedJobs.contains(jobId);
+	if (_completedJobs.contains(jobId)) {
+		_completedJobsMutex.unlock();
+		return true;
+	}
 	_completedJobsMutex.unlock();
-	return contains;
+
+	return false;
 }

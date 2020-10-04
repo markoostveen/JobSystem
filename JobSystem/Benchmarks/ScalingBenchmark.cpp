@@ -7,11 +7,12 @@ using namespace JbSystem;
 #pragma region Benchmark function
 //Make sure that function loads the CPU enough because small tasks might have to much overhead to fully use the CPU
 
-void TestFunction(const int& i) {
+void TestFunction(int& i) {
+	i++;
 }
 
 constexpr int ArraySize = 100;
-void CopyArrayValues(const int& index, void(*function)(const int&)) {
+void CopyArrayValues(const int& index, void(*function)(int&)) {
 	int a[ArraySize];
 	int b[ArraySize];
 	for (size_t i = 0; i < ArraySize; i++)
@@ -23,11 +24,13 @@ void CopyArrayValues(const int& index, void(*function)(const int&)) {
 		b[i] = a[i];
 	}
 
-	function(index);
-	function(index);
-	function(index);
-	function(index);
-	function(index);
+	int value = index;
+
+	function(value);
+	function(value);
+	function(value);
+	function(value);
+	function(value);
 }
 #pragma endregion
 
@@ -35,7 +38,7 @@ constexpr int JobCount = 1000000;
 constexpr int MasterJobs = 25;
 
 int scheduleSmallJobs(JobSystem*& jobsystem) {
-	auto jobs = JobSystem::CreateParallelJob(JobPriority::High, 0, JobCount, 1000, TestFunction);
+	auto jobs = JobSystem::CreateParallelJob(JobPriority::High, 0, JobCount, 1000, CopyArrayValues, TestFunction);
 	auto JobIds = jobsystem->Schedule(jobs);
 	auto masterJob = JobSystem::CreateJob([]() {});
 	return jobsystem->Schedule(masterJob, JobIds);
@@ -75,26 +78,26 @@ int main() {
 	double time = 0;
 	for (size_t i = 2; i < 20; i++)
 	{
-		threadCount = i * 2;
+		threadCount = (i * 2) - 1;
 		time = 0;
 		for (size_t i = 0; i < repeatBenchmarkTimes; i++)
 		{
 			time += RunBenchmark(threadCount);
 		}
 
-		std::cout << threadCount << " took " << time / repeatBenchmarkTimes << "ms" << std::endl;
+		std::cout << threadCount << " worker threads took " << time / repeatBenchmarkTimes << "ms" << std::endl;
 	}
 
-	for (size_t i = 20; i > 2; i--)
+	for (size_t i = 20; i > 1; i--)
 	{
-		threadCount = i * 2;
+		threadCount = (i * 2) - 1;
 		time = 0;
 		for (size_t i = 0; i < repeatBenchmarkTimes; i++)
 		{
 			time += RunBenchmark(threadCount);
 		}
 
-		std::cout << threadCount << " took " << time / repeatBenchmarkTimes << "ms" << std::endl;
+		std::cout << threadCount << " worker threads took " << time / repeatBenchmarkTimes << "ms" << std::endl;
 	}
 	return 0;
 }
