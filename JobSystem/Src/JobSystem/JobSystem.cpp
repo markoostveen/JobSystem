@@ -24,7 +24,7 @@ namespace JbSystem {
 
 		bool firstStartup = _workerCount == 0;
 
-		std::vector<Job*>* jobs;
+		std::vector<Job*>* jobs = nullptr;
 		if (!firstStartup) {
 			//std::cout << "JobSystem is shutting down" << std::endl;
 
