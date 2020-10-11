@@ -113,11 +113,11 @@ namespace JbSystem {
 		ExecuteJobFromWorker(maxTimeInvestment);
 	}
 
-	static std::shared_ptr<JobSystem> JobSystemSingleton;
-	std::shared_ptr<JobSystem> JbSystem::JobSystem::GetInstance()
+	static JobSystem* JobSystemSingleton;
+	JobSystem* JbSystem::JobSystem::GetInstance()
 	{
 		if (JobSystemSingleton == nullptr) {
-			JobSystemSingleton = std::make_shared<JobSystem>();
+			JobSystemSingleton = new JobSystem();
 		}
 		return JobSystemSingleton;
 	}
@@ -130,10 +130,10 @@ namespace JbSystem {
 
 		// Make sure that all workers are still running correctly
 		_schedulesTillMaintainance--;
-		if (_schedulesTillMaintainance == 0) {
+		if (_schedulesTillMaintainance <= 0) {
 			//std::cout << "Validating Jobsystem threads" << std::endl;
 			_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
-			Schedule(CreateJob(JobPriority::High, [](JobSystem* JobSystem) -> void { JobSystem->Cleanup(); }, this));
+			Cleanup();
 		}
 
 		return jobId;
@@ -227,7 +227,7 @@ namespace JbSystem {
 			//std::cout << "Validating Jobsystem threads" << std::endl;
 			_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
 
-			Schedule(CreateJob(JobPriority::Normal, [](JobSystem* jobsystem) { jobsystem->Cleanup(); }, this));
+			Cleanup();
 		}
 
 		std::vector<int> jobIds;

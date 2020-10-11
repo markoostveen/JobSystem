@@ -140,7 +140,7 @@ namespace JbSystem {
 		/// Get singleton instance
 		/// </summary>
 		/// <returns></returns>
-		static std::shared_ptr<JobSystem> GetInstance();
+		static JobSystem* GetInstance();
 
 		/// <summary>
 		/// is the job system active or not
