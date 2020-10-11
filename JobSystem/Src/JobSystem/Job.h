@@ -68,7 +68,7 @@ namespace JbSystem {
 			std::apply(_function, _parameters);
 		}
 
-		inline JobWithParameters operator=(const Job& otherJob) {
+		inline JobWithParameters operator=(const JobWithParameters& otherJob) {
 			return JobWithParameters(otherJob._function, otherJob._basefunction, otherJob._priority, otherJob._id, otherJob._parameters);
 		}
 
