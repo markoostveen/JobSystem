@@ -335,15 +335,19 @@ namespace JbSystem {
 
 	void JobSystem::WaitForJobCompletion(std::vector<int>& jobIds, JobPriority maximumHelpEffort)
 	{
+		struct FinishedTag {};
+		void* location = boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::malloc();
+
 		// Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
-		std::atomic<bool>* finished = new std::atomic<bool>(false);
+		std::atomic<bool>* finished = new(location) std::atomic<bool>(false);
 		auto waitLambda = [](std::atomic<bool>* finished)
 		{
 			finished->store(true);
 		};
 		WaitForJobCompletion(jobIds, waitLambda, finished);
 		while (!finished->load()) { ExecuteJob(maximumHelpEffort); }
-		delete finished;
+
+		boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::free(finished);
 	}
 
 	void JobSystem::ExecuteJobFromWorker(const JobPriority maxTimeInvestment)

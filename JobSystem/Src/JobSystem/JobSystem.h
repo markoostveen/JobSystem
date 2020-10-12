@@ -281,6 +281,8 @@ namespace JbSystem {
 	template<class ...Args>
 	inline void JobSystem::WaitForJobCompletion(const std::vector<int>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
 	{
+		struct DependenciesTag {};
+
 		auto jobScheduler = [](auto retryJob, auto callback, JobSystem* jobSystem, std::vector<int>* dependencies) -> void {
 			for (size_t i = 0; i < dependencies->size(); i++) {
 				if (!jobSystem->IsJobCompleted(dependencies->at(i))) {
@@ -295,13 +297,16 @@ namespace JbSystem {
 
 			//When all dependencies are completed
 			jobSystem->Schedule(callback);
-			delete dependencies;
+			dependencies->~vector();
+			boost::singleton_pool<DependenciesTag, sizeof(std::vector<int>)>::free(dependencies);
 		};
 
-		auto callbackJob = JobSystem::CreateJob(JobPriority::High, function, std::forward<Args>(args)...);
-		auto jobDependencies = new std::vector<int>();
+		void* location = boost::singleton_pool<DependenciesTag, sizeof(std::vector<int>)>::malloc();
+		auto jobDependencies = new(location) std::vector<int>();
 		jobDependencies->reserve(dependencies.size());
 		jobDependencies->insert(jobDependencies->begin(), dependencies.begin(), dependencies.end());
+
+		auto callbackJob = JobSystem::CreateJob(JobPriority::High, function, std::forward<Args>(args)...);
 
 		// run in sync, if dependencies have already completed we can immediatly schedule it
 		jobScheduler(jobScheduler, callbackJob, this, jobDependencies);
