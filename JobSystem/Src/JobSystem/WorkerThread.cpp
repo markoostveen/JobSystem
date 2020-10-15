@@ -69,31 +69,34 @@ void JobSystemWorker::Start()
 Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 {
 	//Return a result based on priority of a job
-
 	Job* value = nullptr;
-	_jobsMutex.lock();
-	if (maxTimeInvestment >= JobPriority::High) {
+
+	bool locked = _modifyingThread.try_lock();
+	if (!locked)
+		return value;
+
+	if (value == nullptr && maxTimeInvestment >= JobPriority::High) {
 		if (!_highPriorityTaskQueue.empty()) {
 			value = _highPriorityTaskQueue.front();
 			_highPriorityTaskQueue.pop();
 		}
 	}
 
-	if (maxTimeInvestment >= JobPriority::Normal && value == nullptr) {
+	if (value == nullptr && maxTimeInvestment >= JobPriority::Normal) {
 		if (!_normalPriorityTaskQueue.empty()) {
 			value = _normalPriorityTaskQueue.front();
 			_normalPriorityTaskQueue.pop();
 		}
 	}
 
-	if (maxTimeInvestment >= JobPriority::Low && value == nullptr) {
+	if (value == nullptr && maxTimeInvestment >= JobPriority::Low) {
 		if (!_lowPriorityTaskQueue.empty()) {
 			value = _lowPriorityTaskQueue.front();
 			_lowPriorityTaskQueue.pop();
 		}
 	}
-	_jobsMutex.unlock();
 
+	_modifyingThread.unlock();
 	return value;
 }
 
@@ -109,7 +112,7 @@ void JbSystem::JobSystemWorker::GiveJob(Job* newJob)
 		_scheduledJobsMutex.unlock();
 	}
 
-	_jobsMutex.lock();
+	_modifyingThread.lock();
 	if (timeInvestment == JobPriority::High) {
 		_highPriorityTaskQueue.emplace(newJob);
 	}
@@ -121,8 +124,7 @@ void JbSystem::JobSystemWorker::GiveJob(Job* newJob)
 	else if (timeInvestment == JobPriority::Low) {
 		_lowPriorityTaskQueue.emplace(newJob);
 	}
-
-	_jobsMutex.unlock();
+	_modifyingThread.unlock();
 }
 
 void JbSystem::JobSystemWorker::GiveFutureJob(int& jobId)

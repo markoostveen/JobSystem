@@ -1,6 +1,8 @@
 #pragma once
 #include "Job.h"
 
+#include "AtomicMutex.h"
+
 #include <thread>
 #include <functional>
 #include <mutex>
@@ -47,14 +49,14 @@ namespace JbSystem {
 
 		JobSystem* _jobsystem;
 
-		std::mutex _jobsMutex;
+		mutex _modifyingThread;
 		std::queue<Job*> _highPriorityTaskQueue;
 		std::queue<Job*> _normalPriorityTaskQueue;
 		std::queue<Job*> _lowPriorityTaskQueue;
 
-		std::mutex _completedJobsMutex;
+		mutex _completedJobsMutex;
 		std::unordered_set<int> _completedJobs;
-		std::mutex _scheduledJobsMutex;
+		mutex _scheduledJobsMutex;
 		std::unordered_set<int> _scheduledJobs;
 
 		std::mutex _isRunningMutex;
