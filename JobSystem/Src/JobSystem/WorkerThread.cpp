@@ -12,15 +12,24 @@ void JobSystemWorker::ThreadLoop() {
 	std::unique_lock ul(_isRunningMutex);
 	//std::cout << "Worker has started" << std::endl;
 
+	int noWork = 0;
+
 	while (Active) {
 		Job* job = TryTakeJob();
 		if (job != nullptr) {
 			job->Run();
 			FinishJob(job);
+			noWork = 0;
 			continue;
 		}
 
 		_jobsystem->ExecuteJob(JobPriority::Low);
+		noWork++;
+
+		if (noWork > 1000) {
+			noWork = 0;
+			std::this_thread::sleep_for(std::chrono::nanoseconds(10));
+		}
 	}
 
 	_isRunningConditionalVariable.notify_all();
