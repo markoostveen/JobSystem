@@ -29,15 +29,22 @@ namespace JbSystem {
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
 
-		Job* TryTakeJob(const JobPriority maxTimeInvestment = JobPriority::High);
-		void GiveJob(Job* newJob);
+		const Job* TryTakeJob(const JobPriority& maxTimeInvestment = JobPriority::High);
+
+		/// <summary>
+		/// Give a job to the worker thread
+		/// NOTE* This will take ownership over the job
+		/// </summary>
+		/// <param name="newJob"></param>
+		/// <param name="priority"></param>
+		void GiveJob(Job*& newJob, const JobPriority priority);
 		void GiveFutureJob(int& jobId);
 
 		/// <summary>
 		/// Finishes job and cleans up after
 		/// </summary>
 		/// <param name="job"></param>
-		void FinishJob(Job*& job);
+		void FinishJob(const Job*& job);
 
 		bool IsJobScheduled(const int& jobId);
 		bool IsJobFinished(const int& jobId);

@@ -15,7 +15,7 @@ void JobSystemWorker::ThreadLoop() {
 	int noWork = 0;
 
 	while (Active) {
-		Job* job = TryTakeJob();
+		const Job* job = TryTakeJob();
 		if (job != nullptr) {
 			job->Run();
 			FinishJob(job);
@@ -75,7 +75,7 @@ void JobSystemWorker::Start()
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
-Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
+const Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 {
 	//Return a result based on priority of a job
 	Job* value = nullptr;
@@ -84,24 +84,30 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 	if (!locked)
 		return value;
 
-	if (value == nullptr && maxTimeInvestment >= JobPriority::High) {
+	if (maxTimeInvestment >= JobPriority::High) {
 		if (!_highPriorityTaskQueue.empty()) {
 			value = _highPriorityTaskQueue.front();
 			_highPriorityTaskQueue.pop();
+			_modifyingThread.unlock();
+			return value;
 		}
 	}
 
-	if (value == nullptr && maxTimeInvestment >= JobPriority::Normal) {
+	if (maxTimeInvestment >= JobPriority::Normal) {
 		if (!_normalPriorityTaskQueue.empty()) {
 			value = _normalPriorityTaskQueue.front();
 			_normalPriorityTaskQueue.pop();
+			_modifyingThread.unlock();
+			return value;
 		}
 	}
 
-	if (value == nullptr && maxTimeInvestment >= JobPriority::Low) {
+	if (maxTimeInvestment >= JobPriority::Low) {
 		if (!_lowPriorityTaskQueue.empty()) {
 			value = _lowPriorityTaskQueue.front();
 			_lowPriorityTaskQueue.pop();
+			_modifyingThread.unlock();
+			return value;
 		}
 	}
 
@@ -109,30 +115,31 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority maxTimeInvestment)
 	return value;
 }
 
-void JbSystem::JobSystemWorker::GiveJob(Job* newJob)
+void JbSystem::JobSystemWorker::GiveJob(Job*& newJob, const JobPriority priority)
 {
-	const JobPriority timeInvestment = newJob->GetPriority();
+	const int jobId = newJob->GetId();
 
-	int jobId = newJob->GetId();
-
-	if (!IsJobScheduled(jobId)) {
+	bool isScheduledBefore = IsJobScheduled(jobId);
+	if (!isScheduledBefore) {
 		_scheduledJobsMutex.lock();
 		_scheduledJobs.emplace(jobId);
 		_scheduledJobsMutex.unlock();
 	}
 
 	_modifyingThread.lock();
-	if (timeInvestment == JobPriority::High) {
+
+	if (priority == JobPriority::High) {
 		_highPriorityTaskQueue.emplace(newJob);
 	}
 
-	else if (timeInvestment == JobPriority::Normal) {
+	else if (priority == JobPriority::Normal) {
 		_normalPriorityTaskQueue.emplace(newJob);
 	}
 
-	else if (timeInvestment == JobPriority::Low) {
+	else if (priority == JobPriority::Low) {
 		_lowPriorityTaskQueue.emplace(newJob);
 	}
+
 	_modifyingThread.unlock();
 }
 
@@ -143,10 +150,10 @@ void JbSystem::JobSystemWorker::GiveFutureJob(int& jobId)
 	_scheduledJobsMutex.unlock();
 }
 
-void JbSystem::JobSystemWorker::FinishJob(Job*& job)
+void JbSystem::JobSystemWorker::FinishJob(const Job*& job)
 {
 	const int jobId = job->GetId();
-	job->Free();
+	const_cast<Job*&>(job)->Free();
 	_scheduledJobsMutex.lock();
 	_completedJobsMutex.lock();
 	_scheduledJobs.erase(jobId);
