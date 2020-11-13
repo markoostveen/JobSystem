@@ -19,7 +19,7 @@ int main()
 
 	auto collection = new std::vector<int>[parallelSize];
 
-	auto largeJob = JobSystem::CreateParallelJob(JobPriority::High, 0, parallelSize, batchSize,
+	auto largeJob = JobSystem::CreateParallelJob(0, parallelSize, batchSize,
 		[](const int& index, std::vector<int>* collection, int iterations) {
 			//Do whatever you have too
 
@@ -31,9 +31,9 @@ int main()
 				vector.emplace_back(1);
 			}
 		}, collection, iterations);
-	auto largeJobIds = jobSystem->Schedule(largeJob);
+	auto largeJobIds = jobSystem->Schedule(largeJob, JobPriority::High);
 
-	auto largeJob2 = JobSystem::CreateParallelJob(JobPriority::High, 0, parallelSize, batchSize,
+	auto largeJob2 = JobSystem::CreateParallelJob(0, parallelSize, batchSize,
 		[](const int& index, std::vector<int>* collection, int iterations) {
 			//Do whatever you have too
 
@@ -46,7 +46,7 @@ int main()
 			}
 		}, collection, iterations);
 
-	auto largeJob2Ids = jobSystem->Schedule(largeJob2, largeJobIds);
+	auto largeJob2Ids = jobSystem->Schedule(largeJob2, JobPriority::High, largeJobIds);
 
 	jobSystem->WaitForJobCompletion(largeJob2Ids);
 

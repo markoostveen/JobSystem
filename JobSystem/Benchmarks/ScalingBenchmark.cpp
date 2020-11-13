@@ -38,17 +38,17 @@ constexpr int JobCount = 1000000;
 constexpr int MasterJobs = 25;
 
 int scheduleSmallJobs(JobSystem*& jobsystem) {
-	auto jobs = JobSystem::CreateParallelJob(JobPriority::High, 0, JobCount, 1000, CopyArrayValues, TestFunction);
-	auto JobIds = jobsystem->Schedule(jobs);
+	auto jobs = JobSystem::CreateParallelJob( 0, JobCount, 1000, CopyArrayValues, TestFunction);
+	auto JobIds = jobsystem->Schedule(jobs, JobPriority::High);
 	auto masterJob = JobSystem::CreateJob([]() {});
-	return jobsystem->Schedule(masterJob, JobIds);
+	return jobsystem->Schedule(masterJob, JobPriority::High, JobIds);
 }
 
 int ScheduleJobs(JobSystem*& jobsystem) {
 	auto jobs = JobSystem::CreateParallelJob(0, JobCount, 10000, CopyArrayValues, TestFunction);
-	auto JobIds = jobsystem->Schedule(jobs);
-	auto masterJob = JobSystem::CreateJob([](JobSystem* jobsystem) { scheduleSmallJobs(jobsystem); }, jobsystem);
-	return jobsystem->Schedule(masterJob, JobIds);
+	auto JobIds = jobsystem->Schedule(jobs, JobPriority::High);
+	auto masterJob = JobSystem::CreateJobWithParams([](JobSystem* jobsystem) { scheduleSmallJobs(jobsystem); }, jobsystem);
+	return jobsystem->Schedule(masterJob, JobPriority::High, JobIds);
 }
 
 double RunBenchmark(int threadCount) {

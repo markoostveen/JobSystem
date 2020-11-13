@@ -175,6 +175,9 @@ namespace JbSystem {
 
 	std::shared_ptr<std::vector<const Job*>> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, void(*function)(const int&))
 	{
+		if(batchSize < 1)
+			batchSize = 1;
+
 		auto jobs = std::make_shared<std::vector<const Job*>>();
 
 		auto parallelFunction = [](auto callback, int startIndex, int endIndex)
@@ -194,16 +197,19 @@ namespace JbSystem {
 		int CurrentBatchEnd = endOfRange;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
-
-			jobStartIndex = startIndex + endOfRange - ((totalBatches + 1) * batchSize);
-			jobEndIndex = startIndex + endOfRange - (totalBatches * batchSize);
-
-			jobs->emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex));
 			totalBatches++;
 		}
 
-		jobStartIndex = startIndex;
-		jobEndIndex = startIndex + endOfRange - (totalBatches * batchSize);
+		for (int i = 0; i < totalBatches; i++)
+		{
+			jobStartIndex = startIndex + (i * batchSize);
+			jobEndIndex = startIndex + ((i + 1) * batchSize);
+
+			jobs->emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex));
+		}
+
+		jobStartIndex = startIndex + (totalBatches * batchSize);
+		jobEndIndex = endIndex;
 
 		//Create last job
 		jobs->emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex));

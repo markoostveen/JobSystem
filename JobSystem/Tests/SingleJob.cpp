@@ -14,7 +14,7 @@ using namespace JbSystem;
 int StartIncremenJob(std::vector<int>* data) {
 	auto jobSystem = JobSystem::GetInstance();
 
-	auto job = JobSystem::CreateJob(
+	auto job = JobSystem::CreateJobWithParams(
 		[](auto data)
 		{
 			std::cout << "Executing Job" << std::endl;
@@ -24,7 +24,7 @@ int StartIncremenJob(std::vector<int>* data) {
 			}
 		}, data);
 
-	return jobSystem->Schedule(job);
+	return jobSystem->Schedule(job, JobPriority::High);
 }
 
 bool RunSimpleJob() {
@@ -53,13 +53,13 @@ bool RunManyDependencyJob() {
 
 	auto emptyJobFunction = []() { std::cout << " Running job " << std::endl; };
 
-	int jobId0 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction));
-	int jobId1 = jobSystem->Schedule(JobSystem::CreateJob(JobPriority::High, emptyJobFunction));
-	int jobId2 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction));
+	int jobId0 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+	int jobId1 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+	int jobId2 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
 
 	DoStuff();
-	int jobId3 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), jobId2, jobId1);
-	int jobId4 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), jobId3, jobId0);
+	int jobId3 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId2, jobId1);
+	int jobId4 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId3, jobId0);
 
 	DoStuff();
 
@@ -74,13 +74,13 @@ bool RunDependencyJob() {
 
 	std::vector<int> jobIds;
 	jobIds.reserve(4);
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {})));
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob(JobPriority::High, []() {})));
+	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
+	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
 	DoStuff();
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {})));
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {})));
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob(JobPriority::Low, []() {})));
-	int jobId4 = jobSystem->Schedule(JobSystem::CreateJob([]() {}), jobIds);
+	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
+	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
+	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::Low));
+	int jobId4 = jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High, jobIds);
 	DoStuff();
 
 	//Wait for 4 seconds then check if everything is completed

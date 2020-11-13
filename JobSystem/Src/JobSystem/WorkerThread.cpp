@@ -154,12 +154,12 @@ void JbSystem::JobSystemWorker::FinishJob(const Job*& job)
 {
 	const int jobId = job->GetId();
 	const_cast<Job*&>(job)->Free();
-	_scheduledJobsMutex.lock();
 	_completedJobsMutex.lock();
-	_scheduledJobs.erase(jobId);
 	_completedJobs.emplace(jobId);
-	_scheduledJobsMutex.unlock();
 	_completedJobsMutex.unlock();
+	_scheduledJobsMutex.lock();
+	_scheduledJobs.erase(jobId);
+	_scheduledJobsMutex.unlock();
 }
 
 bool JbSystem::JobSystemWorker::IsJobScheduled(const int& jobId)

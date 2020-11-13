@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include <vector>
+#include "boost/container/vector.hpp"
 #include <functional>
 #include <type_traits>
 

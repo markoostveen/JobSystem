@@ -27,9 +27,9 @@ bool JobsUsingDataFromEachother() {
 			}
 		};
 
-		auto job = JobSystem::CreateJob(JobPriority::High, jobFunction, data, i);
+		auto job = JobSystem::CreateJobWithParams(jobFunction, data, i);
 
-		jobIds.emplace_back(jobSystem->Schedule(job));
+		jobIds.emplace_back(jobSystem->Schedule(job, JobPriority::High));
 	}
 
 	std::vector<int>* data2 = new std::vector<int>[totalJobSize];
@@ -37,7 +37,7 @@ bool JobsUsingDataFromEachother() {
 	jobIds2.reserve(totalJobSize);
 	for (int i = 0; i < totalJobSize; i++)
 	{
-		auto job = jobSystem->CreateJob(JobPriority::High, [](auto data, int index) {
+		auto job = jobSystem->CreateJobWithParams([](auto data, int index) {
 			std::cout << "Executing Job 2" << std::endl;
 			for (int i = 0; i < 10; i++)
 			{
@@ -45,10 +45,10 @@ bool JobsUsingDataFromEachother() {
 			}
 			}, data2, i);
 
-		jobIds2.emplace_back(jobSystem->Schedule(job, jobIds[i]));
+		jobIds2.emplace_back(jobSystem->Schedule(job, JobPriority::High, jobIds[i]));
 	}
 
-	int controlJobId = jobSystem->Schedule(jobSystem->CreateJob(JbSystem::JobPriority::Low, []() {}), jobIds2);
+	int controlJobId = jobSystem->Schedule(jobSystem->CreateJob([]() {}), JobPriority::Low, jobIds2);
 	return jobSystem->WaitForJobCompletion(controlJobId);
 }
 

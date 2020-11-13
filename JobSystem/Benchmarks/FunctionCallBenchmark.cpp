@@ -28,7 +28,7 @@ double CallJobStack() {
 
 	for (size_t i = 0; i < totalIterations; i++)
 	{
-		JobVoid job(JobPriority::None, TestCall);
+		JobVoid job(TestCall);
 		job.Run();
 	}
 
@@ -41,9 +41,9 @@ double CallJobHeap() {
 
 	for (size_t i = 0; i < totalIterations; i++)
 	{
-		Job* job = JobSystem::CreateJob(JobPriority::None, TestCall);
+		const Job* job = JobSystem::CreateJob(TestCall);
 		job->Run();
-		job->Free();
+		JobSystem::DestroyNonScheduledJob(job);
 	}
 
 	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
