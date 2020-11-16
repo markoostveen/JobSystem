@@ -253,7 +253,7 @@ namespace JbSystem {
 		const std::vector<int> dependencyArray = { dependencies ... };
 
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
-		auto workerIds = BatchScheduleFutureJob(newjobs.get());
+		auto workerIds = BatchScheduleFutureJob(newjobs);
 
 		WaitForJobCompletion(dependencyArray,
 			[](auto jobSystem, auto workerIds, auto callbackJobs)
