@@ -7,30 +7,14 @@ using namespace JbSystem;
 #pragma region Benchmark function
 //Make sure that function loads the CPU enough because small tasks might have to much overhead to fully use the CPU
 
-void TestFunction(int& i) {
-	i++;
-}
-
 constexpr int ArraySize = 100;
-void CopyArrayValues(const int& index, void(*function)(int&)) {
-	int a[ArraySize];
-	int b[ArraySize];
-	for (size_t i = 0; i < ArraySize; i++)
-	{
-		a[i] = i * 21;
+void CopyArrayValues(const int& index) {
+	size_t test = 100;
+	size_t volatile& vv = test;
+	vv = 0;
+	for (size_t i = 0; i != test; ++i) {
+		vv += 1;
 	}
-	for (size_t i = 0; i < ArraySize; i++)
-	{
-		b[i] = a[i];
-	}
-
-	int value = index;
-
-	function(value);
-	function(value);
-	function(value);
-	function(value);
-	function(value);
 }
 #pragma endregion
 
@@ -38,15 +22,15 @@ constexpr int JobCount = 1000000;
 constexpr int MasterJobs = 25;
 
 int scheduleSmallJobs(JobSystem*& jobsystem) {
-	auto jobs = JobSystem::CreateParallelJob( 0, JobCount, 1000, CopyArrayValues, TestFunction);
+	auto jobs = JobSystem::CreateParallelJob( 0, JobCount, 1000, CopyArrayValues);
 	auto JobIds = jobsystem->Schedule(jobs, JobPriority::High);
 	auto masterJob = JobSystem::CreateJob([]() {});
-	return jobsystem->Schedule(masterJob, JobPriority::High, JobIds);
+	return jobsystem->Schedule(masterJob, JobPriority::Normal, JobIds);
 }
 
 int ScheduleJobs(JobSystem*& jobsystem) {
-	auto jobs = JobSystem::CreateParallelJob(0, JobCount, 10000, CopyArrayValues, TestFunction);
-	auto JobIds = jobsystem->Schedule(jobs, JobPriority::High);
+	auto jobs = JobSystem::CreateParallelJob(0, JobCount, 10000, CopyArrayValues);
+	auto JobIds = jobsystem->Schedule(jobs, JobPriority::Normal);
 	auto masterJob = JobSystem::CreateJobWithParams([](JobSystem* jobsystem) { scheduleSmallJobs(jobsystem); }, jobsystem);
 	return jobsystem->Schedule(masterJob, JobPriority::High, JobIds);
 }
@@ -59,11 +43,19 @@ double RunBenchmark(int threadCount) {
 	auto masterJobs = std::vector<int>();
 	masterJobs.reserve(MasterJobs);
 
-	for (size_t i = 0; i < MasterJobs; i++)
-	{
-		masterJobs.emplace_back(ScheduleJobs(customJobSystem));
-	}
+	JbSystem::mutex emplaceMutex;
 
+
+	auto scheduleJobs = JobSystem::CreateParallelJob(0, MasterJobs, 1, [](const int& index, std::vector<int>* masterJobs, JbSystem::mutex* mutex, JobSystem* JobSystem){
+		
+		int masterJob = ScheduleJobs(JobSystem);
+		mutex->lock();
+		masterJobs->emplace_back(masterJob);
+		mutex->unlock();
+	}, &masterJobs, &emplaceMutex, customJobSystem);
+
+	auto scheduleJobIds = customJobSystem->Schedule(scheduleJobs, JobPriority::High);
+	customJobSystem->WaitForJobCompletion(scheduleJobIds);
 	customJobSystem->WaitForJobCompletion(masterJobs);
 
 	std::chrono::time_point end = std::chrono::high_resolution_clock::now();

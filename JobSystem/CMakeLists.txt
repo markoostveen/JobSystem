@@ -9,6 +9,7 @@ project ("JobSystem")
 add_subdirectory ("Src")
 
 enable_testing()
+include(Dart)
 add_subdirectory ("Tests")
 
 add_subdirectory("Benchmarks")

@@ -36,8 +36,8 @@ namespace JbSystem {
 
 		//Parallel
 		template<class ...Args>
-		static std::shared_ptr<std::vector<const Job*>> CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args... args);
-		static std::shared_ptr<std::vector<const Job*>> CreateParallelJob(int startIndex, int endIndex, int batchSize, void (*function)(const int&));
+		static std::vector<const Job*> CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args... args);
+		static std::vector<const Job*>CreateParallelJob(int startIndex, int endIndex, int batchSize, void (*function)(const int&));
 
 		/// <summary>
 		/// Gives the job to one of the workers for execution
@@ -64,20 +64,20 @@ namespace JbSystem {
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		const std::vector<int> Schedule(std::shared_ptr<std::vector<const Job*>> newjobs, const JobPriority priority);
+		const std::vector<int> Schedule(std::vector<const Job*> newjobs, const JobPriority priority);
 		/// <summary>
 		/// Gives the job to one of the workers for execution
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
 		template<typename ...JobId>
-		const std::vector<int> Schedule(std::shared_ptr<std::vector<const Job*>> newjobs, const JobPriority priority, const JobId... dependencies);
+		const std::vector<int> Schedule(std::vector<const Job*> newjobs, const JobPriority priority, const JobId... dependencies);
 		/// <summary>
 		/// Gives the job to one of the workers for execution
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		const std::vector<int> Schedule(std::shared_ptr<std::vector<const Job*>> newjobs, const JobPriority priority, const std::vector<int> dependencies);
+		const std::vector<int> Schedule(std::vector<const Job*> newjobs, const JobPriority priority, const std::vector<int> dependencies);
 
 		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed
@@ -141,8 +141,8 @@ namespace JbSystem {
 		std::vector<Job*>* Shutdown();
 
 		int ScheduleFutureJob(const Job*& newFutureJob);
-		std::vector<int> BatchScheduleJob(const std::vector<const Job*>* newjobs, const JobPriority priority);
-		std::vector<int> BatchScheduleFutureJob(const std::vector<const Job*>* newjobs);
+		std::vector<int> BatchScheduleJob(const std::vector<const Job*>& newjobs, const JobPriority priority);
+		std::vector<int> BatchScheduleFutureJob(const std::vector<const Job*>& newjobs);
 
 		void ExecuteJobFromWorker(const JobPriority maxTimeInvestment = JobPriority::Low);
 
@@ -158,7 +158,7 @@ namespace JbSystem {
 		/// <returns></returns>
 		const int Schedule(const int& workerId, const Job*& newjob, const JobPriority priority);
 
-		const std::vector<int> Schedule(const std::vector<int>& workerIds, const JobPriority priority, std::shared_ptr<std::vector<const Job*>> newjobs);
+		const std::vector<int> Schedule(const std::vector<int>& workerIds, const JobPriority priority, std::vector<const Job*> newjobs);
 
 		/// <summary>
 		/// Take all scheduled jobs from all workers
@@ -185,12 +185,12 @@ namespace JbSystem {
 	}
 
 	template<class ...Args>
-	inline std::shared_ptr<std::vector<const Job*>> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args ...args)
+	inline std::vector<const Job*> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args ...args)
 	{
 		if (batchSize < 1)
 			batchSize = 1;
 
-		auto jobs = std::make_shared<std::vector<const Job*>>();
+		auto jobs = std::vector<const Job*>();
 
 
 		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int startIndex, int endIndex, Args ...args)
@@ -219,14 +219,14 @@ namespace JbSystem {
 			jobStartIndex = startIndex + (i * batchSize);
 			jobEndIndex = startIndex + ((i + 1) * batchSize);
 
-			jobs->emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex, std::forward<Args>(args)...));
+			jobs.emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex, std::forward<Args>(args)...));
 		}
 
 		jobStartIndex = startIndex + (totalBatches * batchSize);
 		jobEndIndex = endIndex;
 
 		//Create last job
-		jobs->emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex, std::forward<Args>(args)...));
+		jobs.emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex, std::forward<Args>(args)...));
 
 		return jobs;
 	}
@@ -248,7 +248,7 @@ namespace JbSystem {
 	}
 
 	template<typename ...JobId>
-	inline const std::vector<int> JobSystem::Schedule(std::shared_ptr<std::vector<const Job*>> newjobs, const JobPriority priority, const JobId ...dependencies)
+	inline const std::vector<int> JobSystem::Schedule(std::vector<const Job*> newjobs, const JobPriority priority, const JobId ...dependencies)
 	{
 		const std::vector<int> dependencyArray = { dependencies ... };
 
@@ -280,11 +280,12 @@ namespace JbSystem {
 		auto jobScheduler = [](auto retryJob, const Job* callback, JobSystem* jobSystem, std::vector<int>* dependencies) -> void {
 			for (size_t i = 0; i < dependencies->size(); i++) {
 				if (!jobSystem->IsJobCompleted(dependencies->at(i))) {
-					if (i > 0) // shrink the dependency array to reduce amount of jobs that need to be checked
+					if (i > 0) { // shrink the dependency array to reduce amount of jobs that need to be checked
 						dependencies->erase(dependencies->begin(), dependencies->begin() + i);
+					}
 
 					// Prerequsites not met, queueing async job to check back later
-					constexpr JobPriority dependencyCheckPriority = JobPriority::Low;
+					const JobPriority dependencyCheckPriority = JobPriority::Low;
 					const Job* rescheduleJob = JobSystem::CreateJobWithParams(retryJob,
 						retryJob, callback, jobSystem, dependencies);
 					jobSystem->Schedule(rescheduleJob, dependencyCheckPriority);

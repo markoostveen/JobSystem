@@ -8,6 +8,7 @@
 #include <mutex>
 #include <unordered_set>
 #include <queue>
+#include <condition_variable>
 
 namespace JbSystem {
 	class JobSystem;

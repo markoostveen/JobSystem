@@ -6,7 +6,7 @@ macro(Add_Test_JobSystem TestName CppFiles)
 	target_link_libraries(${fullTestName} PRIVATE JobSystem)
 	target_include_directories(${fullTestName} PRIVATE "${PROJECT_SOURCE_DIR}/Src")
 	set_property(TARGET ${fullTestName} PROPERTY CXX_STANDARD 20)
-	add_test(NAME JobSystem_${TestName} COMMAND ${fullTestName})
+	add_test(NAME JobSystem_${TestName} COMMAND "$<TARGET_FILE:${fullTestName}>")
 endmacro()
 
 #Normal job types
