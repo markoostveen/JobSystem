@@ -262,11 +262,11 @@ namespace JbSystem {
 			}, this, workerIds, newjobs);
 
 		std::vector<int> jobIds;
-		size_t jobCount = newjobs->size();
+		size_t jobCount = newjobs.size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
 		{
-			jobIds.emplace_back(newjobs->at(i)->GetId());
+			jobIds.emplace_back(newjobs[i]->GetId());
 		}
 
 		return jobIds;
