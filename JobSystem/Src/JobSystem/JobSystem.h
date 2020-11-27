@@ -190,7 +190,6 @@ namespace JbSystem {
 		if (batchSize < 1)
 			batchSize = 1;
 
-		auto jobs = std::vector<const Job*>();
 
 
 		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int startIndex, int endIndex, Args ...args)
@@ -213,6 +212,9 @@ namespace JbSystem {
 			CurrentBatchEnd -= batchSize;
 			totalBatches++;
 		}
+
+		auto jobs = std::vector<const Job*>();
+		jobs.reserve(totalBatches + 1);
 
 		for (int i = 0; i < totalBatches; i++)
 		{

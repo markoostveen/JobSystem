@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <iostream>
+#include <chrono>
 
 using namespace JbSystem;
 
@@ -10,39 +11,39 @@ int main()
 {
 	auto jobSystem = std::make_unique<JobSystem>();
 
-	constexpr int parallelSize = 10000000;
-	constexpr int batchSize = 100;
+
+	std::this_thread::sleep_for(std::chrono::seconds(2));
+
+	const int parallelSize = 10000000;
+	const int batchSize = 100;
 	int iterations = 20;
 
-	//print expected result
-	std::cout << parallelSize * iterations << std::endl;
-
-	auto collection = new std::vector<int>[parallelSize];
+	auto collection = new int*[parallelSize];
 
 	auto largeJob = JobSystem::CreateParallelJob(0, parallelSize, batchSize,
-		[](const int& index, std::vector<int>* collection, int iterations) {
+		[](const int& index, int** collection, int iterations) {
 			//Do whatever you have too
 
 			//std::cout << "Job 1" << std::endl;
-			auto& vector = collection[index];
-			vector.reserve(iterations);
-			for (size_t i = 0; i < iterations; i++)
+			auto& array = collection[index];
+			array = new int[iterations];
+			for (int i = 0; i < iterations; i++)
 			{
-				vector.emplace_back(1);
+				array[i] = 1;
 			}
 		}, collection, iterations);
 	auto largeJobIds = jobSystem->Schedule(largeJob, JobPriority::High);
 
 	auto largeJob2 = JobSystem::CreateParallelJob(0, parallelSize, batchSize,
-		[](const int& index, std::vector<int>* collection, int iterations) {
+		[](const int& index, int** collection, int iterations) {
 			//Do whatever you have too
 
 			//std::cout << "Job 2" << std::endl;
-			auto& container = collection[index];
+			auto& array = collection[index];
 
 			for (int i = 0; i < iterations; i++)
 			{
-				container.at(i) += 5;
+				array[i] += 5;
 			}
 		}, collection, iterations);
 
@@ -50,14 +51,10 @@ int main()
 
 	jobSystem->WaitForJobCompletion(largeJob2Ids);
 
-	//print result
-	int totalSize = 0;
-	for (size_t i = 0; i < parallelSize; i++)
+	for (int i = 0; i < parallelSize; i++)
 	{
-		totalSize += collection[i].size();
+		delete[] collection[i];
 	}
-
-	std::cout << totalSize << std::endl;
 
 	delete[] collection;
 	return 0;

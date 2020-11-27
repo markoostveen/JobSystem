@@ -26,12 +26,13 @@ void JobSystemWorker::ThreadLoop() {
 		_jobsystem->ExecuteJob(JobPriority::Low);
 		noWork++;
 
-		if (noWork > 1000) {
+		if (noWork > 10000) {
 			noWork = 0;
-			std::this_thread::sleep_for(std::chrono::nanoseconds(10));
+			break;
 		}
 	}
 
+	Active = false;
 	_isRunningConditionalVariable.notify_all();
 	//std::cout << "Worker has exited!" << std::endl;
 }
@@ -141,6 +142,9 @@ void JbSystem::JobSystemWorker::GiveJob(Job*& newJob, const JobPriority priority
 	}
 
 	_modifyingThread.unlock();
+
+	if(!Active)
+		Start();
 }
 
 void JbSystem::JobSystemWorker::GiveFutureJob(int& jobId)
