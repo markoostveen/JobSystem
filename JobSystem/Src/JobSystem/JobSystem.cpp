@@ -111,9 +111,14 @@ namespace JbSystem {
 		return allJobs;
 	}
 
+	static thread_local int threadDepth = 0; //recursion guard, threads must not be able to infinitely go into scopes
 	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
 	{
-		ExecuteJobFromWorker(maxTimeInvestment);
+		if (threadDepth < 10) { // allow a maximum recursion depth of x
+			threadDepth++;
+			ExecuteJobFromWorker(maxTimeInvestment);
+			threadDepth--;
+		}
 	}
 
 	static JobSystem* JobSystemSingleton;
@@ -317,11 +322,13 @@ namespace JbSystem {
 	{
 		bool jobFinished = IsJobCompleted(jobId);
 
+		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
 		while (!jobFinished) {
 			ExecuteJob(maximumHelpEffort);// use resources to aid workers instead of sleeping
 
 			jobFinished = IsJobCompleted(jobId);
 		}
+		threadDepth++;
 
 		return jobFinished;
 	}
@@ -332,6 +339,7 @@ namespace JbSystem {
 
 		std::chrono::time_point start = std::chrono::steady_clock::now();
 
+		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
 		while (!jobFinished) {
 			ExecuteJob(maximumHelpEffort);// use resources to aid workers instead of sleeping
 
@@ -345,6 +353,7 @@ namespace JbSystem {
 			if (maxMicroSecondsToWait != 0 && passedMicroSeconds > maxMicroSecondsToWait && !jobFinished)
 				return false;
 		}
+		threadDepth++;
 
 		return jobFinished;
 	}

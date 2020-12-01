@@ -143,7 +143,7 @@ void JbSystem::JobSystemWorker::GiveJob(Job*& newJob, const JobPriority priority
 
 	_modifyingThread.unlock();
 
-	if(!Active)
+	if (!Active)
 		Start();
 }
 
@@ -177,7 +177,9 @@ bool JbSystem::JobSystemWorker::IsJobScheduled(const int& jobId)
 bool JbSystem::JobSystemWorker::IsJobFinished(const int& jobId)
 {
 	_completedJobsMutex.lock();
-	bool contains = _completedJobs.contains(jobId);
+	bool contains = false;
+	if (!_completedJobs.empty())
+		contains = _completedJobs.contains(jobId);
 	_completedJobsMutex.unlock();
 	return contains;
 }
