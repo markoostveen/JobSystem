@@ -112,13 +112,20 @@ namespace JbSystem {
 	}
 
 	static thread_local int threadDepth = 0; //recursion guard, threads must not be able to infinitely go into scopes
+	static thread_local bool unwind = false;
+	const int MaxThreadDepth = 10;
 	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
 	{
-		if (threadDepth < 10) { // allow a maximum recursion depth of x
-			threadDepth++;
-			ExecuteJobFromWorker(maxTimeInvestment);
-			threadDepth--;
+		if (threadDepth > MaxThreadDepth || (unwind && threadDepth > 0)) { // allow a maximum recursion depth of x
+			unwind = true;
+			std::this_thread::yield();
+			return;
 		}
+
+		unwind = false;
+		threadDepth++;
+		ExecuteJobFromWorker(maxTimeInvestment);
+		threadDepth--;
 	}
 
 	static JobSystem* JobSystemSingleton;
@@ -180,7 +187,7 @@ namespace JbSystem {
 
 	std::vector<const Job*> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, void(*function)(const int&))
 	{
-		if(batchSize < 1)
+		if (batchSize < 1)
 			batchSize = 1;
 
 		auto parallelFunction = [](auto callback, int startIndex, int endIndex)
