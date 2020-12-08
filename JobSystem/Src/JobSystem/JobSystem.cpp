@@ -4,7 +4,22 @@
 #include <iostream>
 #include <algorithm>
 
+#include "boost/container/small_vector.hpp"
+
 namespace JbSystem {
+	const int MaxThreadDepth = 20;
+	static thread_local int threadDepth = 0; //recursion guard, threads must not be able to infinitely go into scopes
+	static thread_local bool unwind = false;
+	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* MaxThreadDepth> JobStack;
+	bool JobInStack(int JobId) {
+		for (int i = 0; i < JobStack.size(); i++)
+		{
+			if (JobStack[i]->GetId() == JobId)
+				return true;
+		}
+		return false;
+	}
+
 	JobSystem::JobSystem(int threadCount) {
 		ReConfigure(threadCount);
 	}
@@ -111,14 +126,14 @@ namespace JbSystem {
 		return allJobs;
 	}
 
-	static thread_local int threadDepth = 0; //recursion guard, threads must not be able to infinitely go into scopes
-	static thread_local bool unwind = false;
-	const int MaxThreadDepth = 10;
 	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
 	{
-		if (threadDepth > MaxThreadDepth || (unwind && threadDepth > 0)) { // allow a maximum recursion depth of x
+		if (threadDepth > MaxThreadDepth && !unwind) { // allow a maximum recursion depth of x
 			unwind = true;
-			std::this_thread::yield();
+			return;
+		}
+
+		if (unwind && threadDepth > 0) {
 			return;
 		}
 
@@ -317,16 +332,19 @@ namespace JbSystem {
 		for (int i = 0; i < _workerCount; i++)
 		{
 			// check if a worker has finished the job
-			if (!_workers[i].IsJobFinished(jobId)) {
-				if (_workers[i].IsJobScheduled(jobId))
-					return false;
-			}
+			if (_workers[i].IsJobFinished(jobId))
+				continue;
+
+			if (_workers[i].IsJobScheduled(jobId))
+				return false;
 		}
 		return true;
 	}
 
 	bool JobSystem::WaitForJobCompletion(int jobId, const JobPriority maximumHelpEffort)
 	{
+		assert(!JobInStack(jobId));  //Job inside workers stack, deadlock encountered!
+
 		bool jobFinished = IsJobCompleted(jobId);
 
 		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
@@ -342,6 +360,8 @@ namespace JbSystem {
 
 	bool JobSystem::WaitForJobCompletion(int jobId, int maxMicroSecondsToWait, const JobPriority maximumHelpEffort)
 	{
+		assert(!JobInStack(jobId)); //Job inside workers stack, deadlock encountered!
+
 		bool jobFinished = IsJobCompleted(jobId);
 
 		std::chrono::time_point start = std::chrono::steady_clock::now();
@@ -367,6 +387,11 @@ namespace JbSystem {
 
 	void JobSystem::WaitForJobCompletion(std::vector<int>& jobIds, JobPriority maximumHelpEffort)
 	{
+		for (int i = 0; i < jobIds.size(); i++)
+		{
+			assert(!JobInStack(jobIds[i])); //Job inside workers stack, deadlock encountered!
+		}
+
 		struct FinishedTag {};
 		void* location = boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::malloc();
 
@@ -376,6 +401,7 @@ namespace JbSystem {
 		{
 			finished->store(true);
 		};
+
 		WaitForJobCompletion(jobIds, waitLambda, finished);
 		while (!finished->load()) { ExecuteJob(maximumHelpEffort); }
 
@@ -385,10 +411,19 @@ namespace JbSystem {
 	void JobSystem::ExecuteJobFromWorker(const JobPriority maxTimeInvestment)
 	{
 		JobSystemWorker& workerThread = _workers[GetRandomWorker()];
-		const Job* job = workerThread.TryTakeJob(maxTimeInvestment);
-		if (job != nullptr) {
-			job->Run();
-			workerThread.FinishJob(job);
+		const Job* threadJob = workerThread.TryTakeJob(maxTimeInvestment);
+		if (threadJob != nullptr) {
+			if (JobInStack(threadJob->GetId())) { // future deadlock encountered, do not execute this job!
+				Job* rescheduleJob = const_cast<Job*>(threadJob);
+				workerThread.GiveJob(rescheduleJob, JobPriority::High);
+				return;
+			}
+
+			JobStack.emplace_back(threadJob);
+			threadJob->Run();
+			auto it = std::find(JobStack.begin(), JobStack.end(), threadJob);
+			JobStack.erase(it);
+			workerThread.FinishJob(threadJob);
 		}
 	}
 

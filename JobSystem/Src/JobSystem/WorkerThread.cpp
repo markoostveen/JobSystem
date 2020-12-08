@@ -68,11 +68,15 @@ void JbSystem::JobSystemWorker::WaitForShutdown()
 
 void JobSystemWorker::Start()
 {
-	if (Active == true)
+	if (Active == true) {
 		std::cout << "Jobsystem thread restarted, but exited previously because of an error" << std::endl;
+		if (_worker.joinable())
+			_worker.join();
+	}
 	Active = true;
 	if (_worker.joinable())
-		_worker.join();
+		_worker.detach();
+
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
