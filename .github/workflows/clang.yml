@@ -23,7 +23,7 @@ jobs:
     - name: Configure CMake
       shell: bash
       working-directory: ${{runner.workspace}}/build
-      run: cmake $GITHUB_WORKSPACE/JobSystem -DCMAKE_BUILD_TYPE=$BUILD_TYPE -dJOBSYSTEM_TEST=True
+      run: cmake $GITHUB_WORKSPACE/JobSystem -DCMAKE_BUILD_TYPE=$BUILD_TYPE -dJOBSYSTEM_TEST=ON
       env:
         CC:  clang
         CXX: clang++
