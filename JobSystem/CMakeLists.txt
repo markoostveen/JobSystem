@@ -10,7 +10,7 @@ add_subdirectory ("Src")
 
 option(JOBSYSTEM_TEST "Build unit test projects" OFF)
 
-if(${JobSystem_Testing})
+if(${JOBSYSTEM_TEST})
     enable_testing()
     include(Dart)
     add_subdirectory ("Tests")

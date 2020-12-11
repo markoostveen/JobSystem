@@ -78,10 +78,6 @@ namespace JbSystem {
 			_function(function), _parameters(parameters...) {
 		}
 
-		JobWithParameters(const Function function, const Job::Function baseFunction, const int id, Args... parameters)
-			: Job(id, baseFunction), _function(function), _parameters(std::forward<Args>(parameters)...) {
-		}
-
 		const Function _function;
 		const Parameters _parameters;
 	};
