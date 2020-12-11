@@ -8,8 +8,12 @@ project ("JobSystem")
 # Include sub-projects.
 add_subdirectory ("Src")
 
-enable_testing()
-include(Dart)
-add_subdirectory ("Tests")
+option(JOBSYSTEM_TEST "Build unit test projects" OFF)
 
-add_subdirectory("Benchmarks")
+if(${JobSystem_Testing})
+    enable_testing()
+    include(Dart)
+    add_subdirectory ("Tests")
+
+    add_subdirectory("Benchmarks")
+endif()
