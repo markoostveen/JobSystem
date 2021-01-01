@@ -24,9 +24,6 @@ jobs:
       shell: bash
       working-directory: ${{runner.workspace}}/build
       run: cmake $GITHUB_WORKSPACE/JobSystem -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DJOBSYSTEM_TEST=ON
-      env:
-        CC:  clang
-        CXX: clang++
     - name: Build
       working-directory: ${{runner.workspace}}/build
       shell: bash
