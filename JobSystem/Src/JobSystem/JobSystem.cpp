@@ -308,13 +308,7 @@ namespace JbSystem {
 	const std::vector<int> JobSystem::Schedule(std::vector<const Job*> newjobs, const JobPriority priority, const std::vector<int> dependencies)
 	{
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
-		auto workerIds = BatchScheduleFutureJob(newjobs);
-
-		WaitForJobCompletion(dependencies,
-			[](JobSystem* jobSystem, auto workerIds, auto callbackJobs, auto priority)
-			{
-				jobSystem->Schedule(workerIds, priority, callbackJobs);
-			}, this, workerIds, newjobs, priority);
+		std::vector<int> workerIds = BatchScheduleFutureJob(newjobs);
 
 		std::vector<int> jobIds;
 		size_t jobCount = newjobs.size();
@@ -323,6 +317,28 @@ namespace JbSystem {
 		{
 			jobIds.emplace_back(newjobs[i]->GetId());
 		}
+
+		// internal struct to house data needed inside the job. these are housed here because of challanges.
+		// These challanges were, having a data type that is copyable as parameters of the callback
+		// lifetime of 'workerids' and 'newjobs' when executing the callback on another thread.
+		struct JobData {
+			JobData(std::vector<int> workerIds, std::vector<const Job*> newjobs)
+				: WorkerIds(workerIds.data(), workerIds.data() + workerIds.size()), Newjobs(newjobs.data(), newjobs.data() + newjobs.size()) {
+			}
+
+			std::vector<int> WorkerIds;
+			std::vector<const Job*> Newjobs;
+		};
+
+		auto scheduleCallback = [](JobSystem* jobSystem, JobData* jobData, const JobPriority priority)
+		{
+			jobSystem->Schedule(jobData->WorkerIds, priority, jobData->Newjobs);
+			delete jobData;
+		};
+
+		WaitForJobCompletion(dependencies,
+			scheduleCallback,
+			this, new JobData(workerIds, newjobs), priority);
 
 		return jobIds;
 	}
