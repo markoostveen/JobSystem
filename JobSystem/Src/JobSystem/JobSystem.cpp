@@ -33,7 +33,9 @@ namespace JbSystem {
 	void JobSystem::ReConfigure(const int threadCount)
 	{
 		if (threadCount <= 1) {
-			std::cout << "JobSystem cannot start with 0-1 workers" << std::endl;
+			std::cout << "JobSystem cannot start with 0-1 workers..." << std::endl;
+			std::cout << "Therefor it has been started with 2 workers" << std::endl;
+			ReConfigure(2);
 			return;
 		}
 
