@@ -52,6 +52,7 @@ namespace JbSystem {
 
 		//Is the read suppost to be active
 		bool Active;
+
 	private:
 		void ThreadLoop();
 

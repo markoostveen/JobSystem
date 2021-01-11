@@ -252,7 +252,7 @@ namespace JbSystem {
 	template<typename ...JobId>
 	inline const std::vector<int> JobSystem::Schedule(std::vector<const Job*> newjobs, const JobPriority priority, const JobId ...dependencies)
 	{
-		const std::vector<int> dependencyArray = { dependencies ... };
+		const std::vector<int> dependencyArray = { dependencies... };
 
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
 		auto workerIds = BatchScheduleFutureJob(newjobs);

@@ -8,13 +8,13 @@
 
 namespace JbSystem {
 	const int MaxThreadDepth = 20;
-	static thread_local int threadDepth = 0; //recursion guard, threads must not be able to infinitely go into scopes
-	static thread_local bool unwind = false;
-	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* MaxThreadDepth> JobStack;
+	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
+	static thread_local bool unwind = false; // when true we can't help with any new jobs, instead we finish all our previous jobs
+	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* MaxThreadDepth> jobStack; // stack of all jobs our current thread is executing
 	bool JobInStack(int JobId) {
-		for (int i = 0; i < JobStack.size(); i++)
+		for (int i = 0; i < jobStack.size(); i++)
 		{
-			if (JobStack[i]->GetId() == JobId)
+			if (jobStack[i]->GetId() == JobId)
 				return true;
 		}
 		return false;
@@ -386,7 +386,7 @@ namespace JbSystem {
 
 		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
 		while (!jobFinished) {
-			ExecuteJob(maximumHelpEffort);// use resources to aid workers instead of sleeping
+			ExecuteJob(maximumHelpEffort); // use resources to aid workers instead of sleeping
 
 			int passedMicroSeconds = static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
 
@@ -407,7 +407,7 @@ namespace JbSystem {
 	{
 		for (int i = 0; i < jobIds.size(); i++)
 		{
-			assert(!JobInStack(jobIds[i])); //Job inside workers stack, deadlock encountered!
+			assert(!JobInStack(jobIds[i]), "Jobs we are waiting for were not given as dependencies and running on the calling thread"); // Job inside workers stack, deadlock encountered!
 		}
 
 		struct FinishedTag {};
@@ -437,10 +437,10 @@ namespace JbSystem {
 				return;
 			}
 
-			JobStack.emplace_back(threadJob);
+			jobStack.emplace_back(threadJob);
 			threadJob->Run();
-			auto it = std::find(JobStack.begin(), JobStack.end(), threadJob);
-			JobStack.erase(it);
+			auto it = std::find(jobStack.begin(), jobStack.end(), threadJob);
+			jobStack.erase(it);
 			workerThread.FinishJob(threadJob);
 		}
 	}

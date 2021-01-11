@@ -124,8 +124,7 @@ void JbSystem::JobSystemWorker::GiveJob(Job*& newJob, const JobPriority priority
 {
 	const int jobId = newJob->GetId();
 
-	bool isScheduledBefore = IsJobScheduled(jobId);
-	if (!isScheduledBefore) {
+	if (!IsJobScheduled(jobId)) {
 		_scheduledJobsMutex.lock();
 		_scheduledJobs.emplace(jobId);
 		_scheduledJobsMutex.unlock();
@@ -180,8 +179,8 @@ bool JbSystem::JobSystemWorker::IsJobScheduled(const int& jobId)
 
 bool JbSystem::JobSystemWorker::IsJobFinished(const int& jobId)
 {
-	_completedJobsMutex.lock();
 	bool contains = false;
+	_completedJobsMutex.lock();
 	if (!_completedJobs.empty())
 		contains = _completedJobs.contains(jobId);
 	_completedJobsMutex.unlock();
