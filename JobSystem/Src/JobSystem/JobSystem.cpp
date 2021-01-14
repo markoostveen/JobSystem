@@ -424,7 +424,7 @@ namespace JbSystem {
 	{
 		for (int i = 0; i < jobIds.size(); i++)
 		{
-			assert(!JobInStack(jobIds[i]), "Jobs we are waiting for were not given as dependencies and running on the calling thread"); // Job inside workers stack, deadlock encountered!
+			assert(!JobInStack(jobIds[i])); // Jobs we are waiting for were not given as dependencies and running on the calling thread!
 		}
 
 		struct FinishedTag {};
