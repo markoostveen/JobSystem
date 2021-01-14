@@ -289,21 +289,38 @@ namespace JbSystem {
 	std::vector<int> JobSystem::BatchScheduleFutureJob(const std::vector<const Job*>& newjobs)
 	{
 		std::vector<int> workerIds;
-		const size_t totalAmountOfJobs = newjobs.size();
-		workerIds.reserve(totalAmountOfJobs);
+		const int totalAmountOfJobs = newjobs.size();
+		workerIds.resize(totalAmountOfJobs);
 
-		for (size_t i = 0; i < totalAmountOfJobs; i++)
+		int jobsPerWorker = totalAmountOfJobs / _workerCount;
+		int remainer = totalAmountOfJobs % _workerCount;
+
+		for (int i = 0; i < _workerCount; i++)
 		{
-			int worker = GetRandomWorker();
-			workerIds.emplace_back(worker);
+			for (int j = 0; j < jobsPerWorker; j++)
+			{
+				workerIds[j + (i * jobsPerWorker)] = i;
+			}
 		}
 
-		for (size_t i = 0; i < totalAmountOfJobs; i++)
+		for (int i = 0; i < _workerCount; i++)
 		{
-			int workerId = workerIds[i];
-			int jobId = newjobs[i]->GetId();
+			_workers[i].GiveFutureJobs(newjobs, i * jobsPerWorker, jobsPerWorker);
+		}
+
+		for (int i = 0; i < remainer; i++)
+		{
+			workerIds[totalAmountOfJobs - i - 1] = i;
+		}
+
+		for (int i = 0; i < remainer; i++)
+		{
+			int workerId = i;
+			workerIds[totalAmountOfJobs - i - 1] = i;
+			int jobId = newjobs[totalAmountOfJobs - i - 1]->GetId();
 			_workers[workerId].GiveFutureJob(jobId);
 		}
+
 		return workerIds;
 	}
 
@@ -429,8 +446,9 @@ namespace JbSystem {
 	void JobSystem::ExecuteJobFromWorker(const JobPriority maxTimeInvestment)
 	{
 		JobSystemWorker& workerThread = _workers[GetRandomWorker()];
-		const Job* threadJob = workerThread.TryTakeJob(maxTimeInvestment);
+		Job* threadJob = workerThread.TryTakeJob(maxTimeInvestment);
 		if (threadJob != nullptr) {
+
 			if (JobInStack(threadJob->GetId())) { // future deadlock encountered, do not execute this job!
 				Job* rescheduleJob = const_cast<Job*>(threadJob);
 				workerThread.GiveJob(rescheduleJob, JobPriority::High);

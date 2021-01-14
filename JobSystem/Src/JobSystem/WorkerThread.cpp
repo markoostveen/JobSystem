@@ -15,7 +15,7 @@ void JobSystemWorker::ThreadLoop() {
 	int noWork = 0;
 
 	while (Active) {
-		const Job* job = TryTakeJob();
+		Job* job = TryTakeJob();
 		if (job != nullptr) {
 			job->Run();
 			FinishJob(job);
@@ -80,7 +80,7 @@ void JobSystemWorker::Start()
 	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
 }
 
-const Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
+Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 {
 	//Return a result based on priority of a job
 	Job* value = nullptr;
@@ -157,10 +157,21 @@ void JbSystem::JobSystemWorker::GiveFutureJob(int& jobId)
 	_scheduledJobsMutex.unlock();
 }
 
-void JbSystem::JobSystemWorker::FinishJob(const Job*& job)
+void JbSystem::JobSystemWorker::GiveFutureJobs(const std::vector<const Job*>& newjobs, int startIndex, int size)
+{
+	_scheduledJobsMutex.lock();
+	for (size_t i = 0; i < size; i++)
+	{
+		_scheduledJobs.emplace(newjobs[startIndex + i]->GetId());
+	}
+	_scheduledJobsMutex.unlock();
+
+}
+
+void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
 	const int jobId = job->GetId();
-	const_cast<Job*&>(job)->Free();
+	job->Free();
 	_completedJobsMutex.lock();
 	_completedJobs.emplace(jobId);
 	_completedJobsMutex.unlock();

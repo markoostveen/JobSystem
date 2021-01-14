@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <array>
 #include <type_traits>
+#include <cassert>
 
 namespace JbSystem {
 	class JobSystem {

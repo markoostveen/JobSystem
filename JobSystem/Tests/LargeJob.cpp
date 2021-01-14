@@ -14,9 +14,9 @@ int main()
 
 	std::this_thread::sleep_for(std::chrono::seconds(2));
 
-	const int parallelSize = 100000000;
-	const int batchSize = 10;
-	int iterations = 5;
+	const int parallelSize = 10000000;
+	const int batchSize = 40;
+	int iterations = 10;
 
 	auto collection = new int*[parallelSize];
 
