@@ -15,9 +15,13 @@
 #include <cassert>
 
 namespace JbSystem {
+
 	class JobSystem {
+
+		typedef void(*WorkerThreadLoop)(JobSystemWorker* worker);
+
 	public:
-		JobSystem(const int threadCount = std::thread::hardware_concurrency() - 1);
+		JobSystem(const int threadCount = std::thread::hardware_concurrency() - 1, WorkerThreadLoop workerLoop = [](JobSystemWorker* worker) { worker->ThreadLoop(); });
 		~JobSystem();
 
 		/// <summary>
@@ -133,6 +137,7 @@ namespace JbSystem {
 		/// is the job system active or not
 		/// </summary>
 		bool Active = false;
+		WorkerThreadLoop WorkerLoop;
 	private:
 
 		/// <summary>
@@ -172,6 +177,7 @@ namespace JbSystem {
 
 		const int _maxSchedulesTillMaintainance = 1000;
 		std::atomic<int> _schedulesTillMaintainance = _maxSchedulesTillMaintainance;
+
 	};
 
 	template<class ...Args>

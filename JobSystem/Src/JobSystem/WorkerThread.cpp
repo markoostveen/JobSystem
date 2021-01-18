@@ -77,7 +77,7 @@ void JobSystemWorker::Start()
 	if (_worker.joinable())
 		_worker.detach();
 
-	_worker = std::thread(&JobSystemWorker::ThreadLoop, this);
+	_worker = std::thread(_jobsystem->WorkerLoop, this);
 }
 
 Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)

@@ -20,7 +20,8 @@ namespace JbSystem {
 		return false;
 	}
 
-	JobSystem::JobSystem(int threadCount) {
+	JobSystem::JobSystem(int threadCount, WorkerThreadLoop workerLoop) {
+		WorkerLoop = workerLoop;
 		ReConfigure(threadCount);
 	}
 
