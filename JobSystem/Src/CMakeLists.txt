@@ -12,15 +12,15 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "CLANG
 
 # Add source to this project's executable.
 file(GLOB_RECURSE  JobSystemSources
-  "JobSystem/*"
+  "JobSystem/*.cpp"
 )
 
 set(JobSystemHeaderDirectory "${CMAKE_CURRENT_SOURCE_DIR}/")
 
 find_package(Threads REQUIRED)
 
-add_library (JobSystem ${JobSystemSources})
-target_include_directories(JobSystem PRIVATE ${JobSystemHeaderDirectory})
+add_library (JobSystem STATIC ${JobSystemSources})
+target_include_directories(JobSystem PUBLIC ${JobSystemHeaderDirectory})
 set_property(TARGET JobSystem PROPERTY CXX_STANDARD 20)
 
 target_link_libraries(JobSystem PRIVATE Threads::Threads)
