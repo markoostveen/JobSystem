@@ -377,6 +377,16 @@ namespace JbSystem {
 		return true;
 	}
 
+	bool JobSystem::IsJobScheduled(const int jobId)
+	{
+		for (int i = 0; i < _workerCount; i++)
+		{
+			if (_workers[i].IsJobScheduled(jobId))
+				return true;
+		}
+		return false;
+	}
+
 	bool JobSystem::WaitForJobCompletion(int jobId, const JobPriority maximumHelpEffort)
 	{
 		assert(!JobInStack(jobId));  //Job inside workers stack, deadlock encountered!

@@ -85,11 +85,18 @@ namespace JbSystem {
 		const std::vector<int> Schedule(std::vector<const Job*> newjobs, const JobPriority priority, const std::vector<int> dependencies);
 
 		/// <summary>
-		/// Caller will help execute jobs until the job with specified Id is completed
+		/// 
 		/// </summary>
 		/// <param name="jobId"></param>
 		/// <returns>weather or not the job was completed</returns>
 		bool IsJobCompleted(const int jobId);
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="jobId"></param>
+		/// <returns>weather or not job is currently scheduled and isn't executed</returns>
+		bool IsJobScheduled(const int jobId);
 
 		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed
