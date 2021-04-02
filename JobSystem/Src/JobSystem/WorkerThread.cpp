@@ -9,6 +9,7 @@
 using namespace JbSystem;
 
 void JobSystemWorker::ThreadLoop() {
+	Active = true;
 	std::unique_lock ul(_isRunningMutex);
 	//std::cout << "Worker has started" << std::endl;
 
@@ -73,6 +74,7 @@ void JobSystemWorker::Start()
 		if (_worker.joinable())
 			_worker.join();
 	}
+
 	Active = true;
 	if (_worker.joinable())
 		_worker.detach();
