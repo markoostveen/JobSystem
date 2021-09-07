@@ -50,11 +50,12 @@ namespace JbSystem {
 
 		bool IsJobScheduled(const int& jobId);
 		bool IsJobFinished(const int& jobId);
+		
+		void ThreadLoop();
 
 		//Is the read suppost to be active
 		bool Active;
 
-		void ThreadLoop();
 	private:
 
 		JobSystem* _jobsystem;
@@ -72,5 +73,6 @@ namespace JbSystem {
 		std::mutex _isRunningMutex;
 		std::condition_variable _isRunningConditionalVariable;
 		std::thread _worker;
+
 	};
 }

@@ -9,10 +9,10 @@
 
 using namespace JbSystem;
 
-bool JobsUsingDataFromEachother() {
+int StartJobs() {
 	auto jobSystem = JbSystem::JobSystem::GetInstance();
 
-	constexpr int totalJobSize = 50;
+	constexpr int totalJobSize = 5000;
 
 	std::vector<int>* data = new std::vector<int>[totalJobSize];
 	std::vector<int> jobIds;
@@ -20,7 +20,7 @@ bool JobsUsingDataFromEachother() {
 	for (int i = 0; i < totalJobSize; i++)
 	{
 		auto jobFunction = [](auto data, int index) {
-			std::cout << "Executing Job" << std::endl;
+			//std::cout << "Executing Job" << std::endl;
 			for (int i = 0; i < 10; i++)
 			{
 				data[index].emplace_back(i);
@@ -38,7 +38,7 @@ bool JobsUsingDataFromEachother() {
 	for (int i = 0; i < totalJobSize; i++)
 	{
 		auto job = jobSystem->CreateJobWithParams([](auto data, int index) {
-			std::cout << "Executing Job 2" << std::endl;
+			//std::cout << "Executing Job 2" << std::endl;
 			for (int i = 0; i < 10; i++)
 			{
 				data[index].emplace_back(i);
@@ -49,7 +49,25 @@ bool JobsUsingDataFromEachother() {
 	}
 
 	int controlJobId = jobSystem->Schedule(jobSystem->CreateJob([]() {}), JobPriority::Low, jobIds2);
-	return jobSystem->WaitForJobCompletion(controlJobId);
+	return controlJobId;
+}
+
+bool JobsUsingDataFromEachother() {
+	constexpr int size = 50;
+
+	int jobs[size];
+	for (int i = 0; i < size; i++)
+	{
+		jobs[i] = StartJobs();
+	}
+
+	auto jobSystem = JbSystem::JobSystem::GetInstance();
+	for (int i = 0; i < size; i++)
+	{
+		assert(jobSystem->WaitForJobCompletion(jobs[i]));
+	}
+
+	return true;
 }
 
 TEST_CASE("Jobs interacting with one another") {

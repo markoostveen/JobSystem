@@ -42,7 +42,7 @@ namespace JbSystem {
 		//Parallel
 		template<class ...Args>
 		static std::vector<const Job*> CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args... args);
-		static std::vector<const Job*>CreateParallelJob(int startIndex, int endIndex, int batchSize, void (*function)(const int&));
+		static std::vector<const Job*> CreateParallelJob(int startIndex, int endIndex, int batchSize, void (*function)(const int&));
 
 		/// <summary>
 		/// Gives the job to one of the workers for execution
@@ -161,6 +161,13 @@ namespace JbSystem {
 
 		void Cleanup();
 
+		void OptimizePerformance();
+
+		void StartAllWorkers();
+
+		bool RescheduleWorkerJobs(JobSystemWorker& worker);
+		void RescheduleWorkerJobsFromInActiveWorkers();
+
 		int GetRandomWorker();
 
 		/// <summary>
@@ -179,10 +186,13 @@ namespace JbSystem {
 		/// <returns></returns>
 		std::vector<Job*>* StealAllJobsFromWorkers();
 
+		std::atomic<int> _activeWorkerCount = 0;
 		int _workerCount = 0;
 		std::vector<JobSystemWorker> _workers;
 
-		const int _maxSchedulesTillMaintainance = 1000;
+		std::mutex _optimizePerformance;
+
+		const int _maxSchedulesTillMaintainance = 20;
 		std::atomic<int> _schedulesTillMaintainance = _maxSchedulesTillMaintainance;
 
 	};
@@ -304,6 +314,8 @@ namespace JbSystem {
 					const JobPriority dependencyCheckPriority = JobPriority::Low;
 					const Job* rescheduleJob = JobSystem::CreateJobWithParams(retryJob,
 						retryJob, callback, jobSystem, dependencies);
+
+					jobSystem->RescheduleWorkerJobsFromInActiveWorkers();
 					jobSystem->Schedule(rescheduleJob, dependencyCheckPriority);
 					return;
 				}
