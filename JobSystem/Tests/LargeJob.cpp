@@ -9,7 +9,7 @@ using namespace JbSystem;
 
 int main()
 {
-	auto jobSystem = std::make_unique<JobSystem>();
+	auto jobSystem = JobSystem::GetInstance();
 
 
 	std::this_thread::sleep_for(std::chrono::seconds(2));

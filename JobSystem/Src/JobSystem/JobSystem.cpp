@@ -116,15 +116,15 @@ namespace JbSystem {
 
 		Active = false;
 
-		//Let worker safely shutdown and complete active last job
-		for (int i = 0; i < _workerCount; i++)
-		{
-			_workers[i].Active = false;
-			_workers[i].WaitForShutdown();
-		}
 
 		//Get jobs finished while threads were stopping
 		auto allJobs = StealAllJobsFromWorkers();
+
+		//Let worker safely shutdown and complete active last job
+		for (int i = 0; i < _workerCount; i++)
+		{
+			_workers[i].WaitForShutdown();
+		}
 
 		_activeWorkerCount.store(0);
 		_workers.clear();
@@ -464,8 +464,13 @@ namespace JbSystem {
 		};
 
 		WaitForJobCompletion(jobIds, waitLambda, finished);
+		int waitingPeriod = 0;
 		while (!finished->load()) {
 			ExecuteJob(maximumHelpEffort);
+			waitingPeriod++;
+
+			if (waitingPeriod > 500)
+				RescheduleWorkerJobsFromInActiveWorkers();
 		}
 
 		boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::free(finished);
