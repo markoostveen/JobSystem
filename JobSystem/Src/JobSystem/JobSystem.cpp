@@ -154,6 +154,16 @@ namespace JbSystem {
 		threadDepth--;
 	}
 
+	int JobSystem::GetWorkerCount()
+	{
+		return _workerCount;
+	}
+
+	int JobSystem::GetActiveWorkerCount()
+	{
+		return _activeWorkerCount.load();
+	}
+
 	static JobSystem* JobSystemSingleton;
 	JobSystem* JbSystem::JobSystem::GetInstance()
 	{

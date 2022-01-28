@@ -134,6 +134,9 @@ namespace JbSystem {
 		/// </summary>
 		void ExecuteJob(const JobPriority maxTimeInvestment = JobPriority::Low);
 
+		int GetWorkerCount();
+		int GetActiveWorkerCount();
+
 		/// <summary>
 		/// Get singleton instance
 		/// </summary>
