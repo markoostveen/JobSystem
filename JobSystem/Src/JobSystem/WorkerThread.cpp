@@ -75,6 +75,7 @@ void JobSystemWorker::Start()
 			_worker.join();
 	}
 
+	_jobsystem->OptimizePerformance(); // Determin best scaling options
 	Active = true;
 	if (_worker.joinable())
 		_worker.detach();

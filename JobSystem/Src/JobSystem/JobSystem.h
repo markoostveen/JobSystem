@@ -18,6 +18,8 @@ namespace JbSystem {
 
 	class JobSystem {
 
+		friend class JobSystemWorker;
+
 		typedef void(*WorkerThreadLoop)(JobSystemWorker* worker);
 
 	public:

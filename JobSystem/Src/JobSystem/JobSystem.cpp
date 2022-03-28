@@ -554,12 +554,12 @@ namespace JbSystem {
 			int highPriority = worker._highPriorityTaskQueue.size();
 			worker._modifyingThread.unlock();
 
-			int bias = 1 + highPriority + (mediumPriority * 5) + (lowPriority * 8);
+			int bias = 1 + (highPriority * 3) + (mediumPriority * 10) + (lowPriority * 15);
 
-			if (bias < 15)
+			if (bias == 1)
 				favorShrink++;
 
-			if (bias > 40)
+			if (bias > 10)
 				favorGrow++;
 		}
 		
