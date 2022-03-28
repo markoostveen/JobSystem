@@ -82,6 +82,11 @@ void JobSystemWorker::Start()
 	_worker = std::thread(_jobsystem->WorkerLoop, this);
 }
 
+int JbSystem::JobSystemWorker::WorkerId()
+{
+	return _jobsystem->GetWorkerId(this);
+}
+
 Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 {
 	//Return a result based on priority of a job

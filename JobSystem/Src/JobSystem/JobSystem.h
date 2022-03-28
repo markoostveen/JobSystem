@@ -136,6 +136,7 @@ namespace JbSystem {
 
 		int GetWorkerCount();
 		int GetActiveWorkerCount();
+		int GetWorkerId(JobSystemWorker* worker);
 
 		/// <summary>
 		/// Get singleton instance

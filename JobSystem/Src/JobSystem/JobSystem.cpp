@@ -164,6 +164,16 @@ namespace JbSystem {
 		return _activeWorkerCount.load();
 	}
 
+	int JobSystem::GetWorkerId(JobSystemWorker* worker)
+	{
+		for (int i = 0; i < _workers.size(); i++)
+		{
+			if (&_workers.at(i) == worker)
+				return i;
+		}
+		return -1;
+	}
+
 	static JobSystem* JobSystemSingleton;
 	JobSystem* JbSystem::JobSystem::GetInstance()
 	{
