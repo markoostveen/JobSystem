@@ -18,6 +18,8 @@ namespace JbSystem {
 
 	class JobSystem {
 
+		friend class JobSystemWorker;
+
 		typedef void(*WorkerThreadLoop)(JobSystemWorker* worker);
 
 	public:
@@ -136,6 +138,7 @@ namespace JbSystem {
 
 		int GetWorkerCount();
 		int GetActiveWorkerCount();
+		int GetWorkerId(JobSystemWorker* worker);
 
 		/// <summary>
 		/// Get singleton instance

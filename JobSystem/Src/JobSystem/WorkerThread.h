@@ -29,6 +29,7 @@ namespace JbSystem {
 		const bool IsRunning();
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
+		int WorkerId();
 
 		Job* TryTakeJob(const JobPriority& maxTimeInvestment = JobPriority::High);
 

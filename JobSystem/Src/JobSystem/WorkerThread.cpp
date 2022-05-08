@@ -75,11 +75,17 @@ void JobSystemWorker::Start()
 			_worker.join();
 	}
 
+	_jobsystem->OptimizePerformance(); // Determin best scaling options
 	Active = true;
 	if (_worker.joinable())
 		_worker.detach();
 
 	_worker = std::thread(_jobsystem->WorkerLoop, this);
+}
+
+int JbSystem::JobSystemWorker::WorkerId()
+{
+	return _jobsystem->GetWorkerId(this);
 }
 
 Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
