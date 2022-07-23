@@ -28,7 +28,6 @@ void JobSystemWorker::ThreadLoop() {
 		noWork++;
 
 		if (noWork > 500000) {
-			noWork = 0;
 			break;
 		}
 	}
