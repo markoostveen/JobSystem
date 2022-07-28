@@ -196,7 +196,7 @@ namespace JbSystem {
 		int _workerCount = 0;
 		std::vector<JobSystemWorker> _workers;
 
-		std::mutex _optimizePerformance;
+		JbSystem::mutex _optimizePerformance;
 
 		const int _maxSchedulesTillMaintainance = 20;
 		std::atomic<int> _schedulesTillMaintainance = _maxSchedulesTillMaintainance;
