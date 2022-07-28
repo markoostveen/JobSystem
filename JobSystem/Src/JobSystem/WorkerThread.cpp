@@ -9,7 +9,6 @@
 using namespace JbSystem;
 
 void JobSystemWorker::ThreadLoop() {
-	Active = true;
 	std::unique_lock ul(_isRunningMutex);
 	//std::cout << "Worker has started" << std::endl;
 
@@ -28,12 +27,28 @@ void JobSystemWorker::ThreadLoop() {
 		noWork++;
 
 		if (noWork > 500000) {
-			break;
+
+			// Check if other works are active
+			bool otherWorkersActive = false;
+			for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
+			{
+				JobSystemWorker& worker = _jobsystem->_workers[i];
+				if (worker.Active && this != &worker) {
+					otherWorkersActive = true;
+					continue;
+				}
+			}
+
+			// Do not shutdown in case there are no other workers
+			if (otherWorkersActive || !_jobsystem->Active) {
+				break;
+			}
+
+			std::this_thread::yield();
 		}
 	}
 
 	Active = false;
-	_isRunningConditionalVariable.notify_all();
 	//std::cout << "Worker has exited!" << std::endl;
 }
 
@@ -63,23 +78,26 @@ const bool JobSystemWorker::IsRunning()
 void JbSystem::JobSystemWorker::WaitForShutdown()
 {
 	std::unique_lock ul(_isRunningMutex);
-	_isRunningConditionalVariable.wait(ul, [&] {return Active == false; });
 }
 
 void JobSystemWorker::Start()
 {
-	if (Active == true) {
-		std::cout << "Jobsystem thread restarted, but exited previously because of an error" << std::endl;
-		if (_worker.joinable())
-			_worker.join();
+	if (Active) {
+		std::cout << "Jobsystem thread detected an error, cannot continue!" << std::endl;
+		std::terminate();
 	}
 
-	_jobsystem->OptimizePerformance(); // Determin best scaling options
 	Active = true;
-	if (_worker.joinable())
-		_worker.detach();
+	_jobsystem->OptimizePerformance(); // Determin best scaling options
 
-	_worker = std::thread(_jobsystem->WorkerLoop, this);
+
+	if (_worker.get_id() != std::thread::id()) {
+		if (_worker.joinable())
+			_worker.join();
+		else
+			_worker.detach();
+	}
+	_worker = std::thread([](JobSystemWorker* worker){ worker->_jobsystem->WorkerLoop(worker); }, this);
 }
 
 int JbSystem::JobSystemWorker::WorkerId()

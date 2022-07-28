@@ -71,8 +71,7 @@ namespace JbSystem {
 		mutex _scheduledJobsMutex;
 		std::unordered_set<int> _scheduledJobs;
 
-		std::mutex _isRunningMutex;
-		std::condition_variable _isRunningConditionalVariable;
+		mutex _isRunningMutex;
 		std::thread _worker;
 
 	};

@@ -404,7 +404,7 @@ namespace JbSystem {
 		{
 			// check if a worker has finished the job
 			if (_workers[i].IsJobFinished(jobId))
-				continue;
+				return true;
 
 			if (_workers[i].IsJobScheduled(jobId))
 				return false;
@@ -573,6 +573,10 @@ namespace JbSystem {
 			_activeWorkerCount.store(activeWorkerCount - 1);
 			//std::cout << "Shrinking active workers\n";
 		}
+
+		// In case worker 0 has stopped make sure to restart it
+		if (!_workers.at(0).IsRunning())
+			_workers.at(0).Start();
 
 		// Reschedule jobs already inside inactive workers
 		RescheduleWorkerJobsFromInActiveWorkers();
