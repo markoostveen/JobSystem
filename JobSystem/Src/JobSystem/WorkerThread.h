@@ -54,12 +54,16 @@ namespace JbSystem {
 		
 		void ThreadLoop();
 
+		void RequestShutdown();
+
 		//Is the read suppost to be active
 		bool Active;
 
 	private:
 
 		JobSystem* _jobsystem;
+
+		std::atomic<bool> _shutdownRequested;
 
 		mutex _modifyingThread;
 		std::queue<Job*> _highPriorityTaskQueue;

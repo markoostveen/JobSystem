@@ -40,7 +40,7 @@ void JobSystemWorker::ThreadLoop() {
 			}
 
 			// Do not shutdown in case there are no other workers
-			if (otherWorkersActive || !_jobsystem->Active) {
+			if (otherWorkersActive || !_jobsystem->Active || _shutdownRequested.load()) {
 				break;
 			}
 
@@ -52,10 +52,16 @@ void JobSystemWorker::ThreadLoop() {
 	//std::cout << "Worker has exited!" << std::endl;
 }
 
+void JbSystem::JobSystemWorker::RequestShutdown()
+{
+	_shutdownRequested.store(true);
+}
+
 JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
 {
 	_jobsystem = jobsystem;
 	Active = false;
+	_shutdownRequested.store(false);
 }
 
 JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)

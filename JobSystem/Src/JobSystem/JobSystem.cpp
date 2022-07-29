@@ -120,10 +120,22 @@ namespace JbSystem {
 		//Get jobs finished while threads were stopping
 		auto allJobs = StealAllJobsFromWorkers();
 
+		bool wasActive = false;
+		do {
+			wasActive = false;
+			for (JobSystemWorker& worker : _workers) {
+				if (!worker.Active)
+					continue;
+
+				worker.RequestShutdown();
+				wasActive = true;
+				break;
+			}
+		} while (wasActive);
+
 		//Let worker safely shutdown and complete active last job
-		for (int i = 0; i < _workerCount; i++)
-		{
-			_workers[i].WaitForShutdown();
+		for (JobSystemWorker& worker : _workers) {
+			worker.WaitForShutdown();
 		}
 
 		_activeWorkerCount.store(0);
