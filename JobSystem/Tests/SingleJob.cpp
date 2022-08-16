@@ -11,7 +11,7 @@
 
 using namespace JbSystem;
 
-int StartIncremenJob(std::vector<int>* data) {
+const JobId& StartIncremenJob(std::vector<int>* data) {
 	auto jobSystem = JobSystem::GetInstance();
 
 	auto job = JobSystem::CreateJobWithParams(
@@ -32,7 +32,7 @@ bool RunSimpleJob() {
 
 	auto data = new std::vector<int>();
 	data->reserve(10);
-	int jobId = StartIncremenJob(data);
+	const JobId& jobId = StartIncremenJob(data);
 
 	DoStuff();
 	DoStuff();
@@ -53,13 +53,13 @@ bool RunManyDependencyJob() {
 
 	auto emptyJobFunction = []() { std::cout << " Running job " << std::endl; };
 
-	int jobId0 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
-	int jobId1 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
-	int jobId2 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+	const JobId& jobId0 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+	const JobId& jobId1 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+	const JobId& jobId2 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
 
 	DoStuff();
-	int jobId3 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId2, jobId1);
-	int jobId4 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId3, jobId0);
+	const JobId& jobId3 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId2, jobId1);
+	const JobId& jobId4 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId3, jobId0);
 
 	DoStuff();
 
@@ -72,7 +72,7 @@ bool RunManyDependencyJob() {
 bool RunDependencyJob() {
 	auto jobSystem = JobSystem::GetInstance();
 
-	std::vector<int> jobIds;
+	std::vector<JobId> jobIds;
 	jobIds.reserve(4);
 	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
 	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
@@ -80,7 +80,7 @@ bool RunDependencyJob() {
 	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
 	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
 	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::Low));
-	int jobId4 = jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High, jobIds);
+	const JobId& jobId4 = jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High, jobIds);
 	DoStuff();
 
 	//Wait for 4 seconds then check if everything is completed

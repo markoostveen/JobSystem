@@ -9,13 +9,13 @@
 
 using namespace JbSystem;
 
-int StartJobs() {
+const JobId& StartJobs() {
 	auto jobSystem = JbSystem::JobSystem::GetInstance();
 
 	constexpr int totalJobSize = 5000;
 
 	std::vector<int>* data = new std::vector<int>[totalJobSize];
-	std::vector<int> jobIds;
+	std::vector<JobId> jobIds;
 	jobIds.reserve(totalJobSize);
 	for (int i = 0; i < totalJobSize; i++)
 	{
@@ -33,7 +33,7 @@ int StartJobs() {
 	}
 
 	std::vector<int>* data2 = new std::vector<int>[totalJobSize];
-	std::vector<int> jobIds2;
+	std::vector<JobId> jobIds2;
 	jobIds2.reserve(totalJobSize);
 	for (int i = 0; i < totalJobSize; i++)
 	{
@@ -48,23 +48,24 @@ int StartJobs() {
 		jobIds2.emplace_back(jobSystem->Schedule(job, JobPriority::High, jobIds[i]));
 	}
 
-	int controlJobId = jobSystem->Schedule(jobSystem->CreateJob([]() {}), JobPriority::Low, jobIds2);
+	const JobId& controlJobId = jobSystem->Schedule(jobSystem->CreateJob([]() {}), JobPriority::Low, jobIds2);
 	return controlJobId;
 }
 
 bool JobsUsingDataFromEachother() {
 	constexpr int size = 50;
 
-	int jobs[size];
+	std::vector<JobId> jobs;
+	jobs.reserve(size);
 	for (int i = 0; i < size; i++)
 	{
-		jobs[i] = StartJobs();
+		jobs.emplace_back(StartJobs());
 	}
 
 	auto jobSystem = JbSystem::JobSystem::GetInstance();
 	for (int i = 0; i < size; i++)
 	{
-		assert(jobSystem->WaitForJobCompletion(jobs[i]));
+		assert(jobSystem->WaitForJobCompletion(jobs.at(i)));
 	}
 
 	return true;

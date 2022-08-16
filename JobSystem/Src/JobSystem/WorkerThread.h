@@ -26,12 +26,13 @@ namespace JbSystem {
 		/// there might be a delay in thread actually exiting be carefull
 		/// </summary>
 		/// <returns></returns>
-		const bool IsRunning();
+		bool IsRunning();
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
 		int WorkerId();
 
 		Job* TryTakeJob(const JobPriority& maxTimeInvestment = JobPriority::High);
+		void UnScheduleJob(const JobId& previouslyScheduledJob);
 
 		/// <summary>
 		/// Give a job to the worker thread
@@ -39,9 +40,9 @@ namespace JbSystem {
 		/// </summary>
 		/// <param name="newJob"></param>
 		/// <param name="priority"></param>
-		void GiveJob(Job*& newJob, const JobPriority priority);
-		void GiveFutureJob(int& jobId);
-		void GiveFutureJobs(const std::vector<const Job*>& newjobs, int startIndex, int size);
+		bool GiveJob(Job* const& newJob, const JobPriority priority);
+		void GiveFutureJob(const JobId& jobId);
+		void GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size);
 
 		/// <summary>
 		/// Finishes job and cleans up after
@@ -49,15 +50,17 @@ namespace JbSystem {
 		/// <param name="job"></param>
 		void FinishJob(Job*& job);
 
-		bool IsJobScheduled(const int& jobId);
-		bool IsJobFinished(const int& jobId);
+		bool IsJobScheduled(const JobId& jobId);
+		bool IsJobFinished(const JobId& jobId);
 		
 		void ThreadLoop();
 
 		void RequestShutdown();
 
 		//Is the read suppost to be active
-		bool Active;
+		std::atomic<bool> Active;
+
+		bool Busy();
 
 	private:
 
@@ -77,6 +80,9 @@ namespace JbSystem {
 
 		mutex _isRunningMutex;
 		std::thread _worker;
+
+		mutex _busyLock;
+		std::atomic<Job*> _busyJob;
 
 	};
 }

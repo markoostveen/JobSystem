@@ -26,29 +26,45 @@ namespace JbSystem {
 		Low = 2
 	};
 
+	class JobId {
+		// New kind of Id based on int, but without implicit conversion as it should not be used that way
+
+	public:
+		JobId(const int& Id);
+		bool operator==(const JobId&) const = default;
+
+		const int& ID() const;
+
+	private:
+		int _id;
+	};
+
 	class Job {
 	public:
 		Job() = delete;
+		virtual ~Job() = default;
+
 		inline void Free() {
 			_destructorfunction(this);
 		}
-		const int GetId() const;
+		
+		JobId GetId() const; // Return copy it needs to be available after Job object get's destroyed
 
 		inline void Run() const {
 			_basefunction(this);
 		}
 
-		static const int RequestUniqueID();
+		static const JobId RequestUniqueID();
 
 	protected:
-		typedef void(*Function)(const Job*);
-		typedef void(*DestructorFunction)(Job*);
+		typedef void(*Function)(const Job* const&);
+		typedef void(*DestructorFunction)(Job* const&);
 
-		Job(const int id, const Function callback, const DestructorFunction destructorfunction);
+		Job(const JobId& id, const Function& callback, const DestructorFunction& destructorfunction);
 
 		const Function _basefunction;
 		const DestructorFunction _destructorfunction;
-		const int _id;
+		const JobId _id;
 	};
 
 	//function with parameters
@@ -58,10 +74,12 @@ namespace JbSystem {
 	public:
 		typedef void(*Function)(Args...);
 
+		virtual ~JobWithParameters() = default;
+
 		inline void Free() { delete this; };
 
-		JobWithParameters(const Function function, Job::DestructorFunction destructorFunction, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, destructorFunction, std::forward<Args>(parameters)...) {}
-		JobWithParameters(const Function function, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, [](Job* base) { static_cast<JobWithParameters<Args...>*>(base)->Free(); }, std::forward<Args>(parameters)...) {}
+		JobWithParameters(const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, destructorFunction, parameters...) {}
+		JobWithParameters(const Function& function, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, [](Job* base) { static_cast<JobWithParameters<Args...>*>(base)->Free(); }, parameters...) {}
 		inline void Run() const {
 			std::apply(_function, _parameters);
 		}
@@ -71,9 +89,9 @@ namespace JbSystem {
 		}
 
 	private:
-		JobWithParameters(const int id, const Function function, Job::DestructorFunction destructorFunction, Args... parameters)
+		JobWithParameters(const JobId& id, const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters)
 			: Job(id,
-				[](const Job* base) { static_cast<const JobWithParameters<Args...>*>(base)->Run(); },
+				[](const Job* const& base) { static_cast<const JobWithParameters<Args...>*>(base)->Run(); },
 				destructorFunction),
 			_function(function), _parameters(parameters...) {
 		}
@@ -86,14 +104,16 @@ namespace JbSystem {
 	class JobSystemWithParametersJob : public JobWithParameters<Args...> {
 	public:
 		struct Tag {};
-		typedef void(*DeconstructorCallback)(JobSystemWithParametersJob*);
+		typedef void(*DeconstructorCallback)(JobSystemWithParametersJob* const&);
+
+		virtual ~JobSystemWithParametersJob() = default;
 
 		inline void Free() {
 			_deconstructorCallback(this);
 		}
 
-		JobSystemWithParametersJob(const typename JobWithParameters<Args...>::Function function, DeconstructorCallback deconstructorCallback, Args... parameters)
-			: JobWithParameters<Args...>(function, [](Job* base) { static_cast<JobSystemWithParametersJob*>(base)->Free(); }, std::forward<Args>(parameters)...), _deconstructorCallback(deconstructorCallback) {}
+		JobSystemWithParametersJob(const typename JobWithParameters<Args...>::Function& function, const DeconstructorCallback& deconstructorCallback, Args... parameters)
+			: JobWithParameters<Args...>(function, [](Job* const& base) { static_cast<JobSystemWithParametersJob*>(base)->Free(); }, parameters...), _deconstructorCallback(deconstructorCallback) {}
 
 	private:
 		const DeconstructorCallback _deconstructorCallback;
@@ -104,10 +124,14 @@ namespace JbSystem {
 	public:
 		typedef void(*Function)();
 
+		virtual ~JobVoid() = default;
+
+
 		inline void Free() { delete this; };
 
-		JobVoid(const Function function, Job::DestructorFunction destructorFunction) : JobVoid(Job::RequestUniqueID(), function, destructorFunction) {}
-		JobVoid(const Function function) : JobVoid(Job::RequestUniqueID(), function, [](Job* base) { static_cast<JobVoid*>(base)->Free(); }) {}
+
+		JobVoid(const Function& function, const Job::DestructorFunction& destructorFunction) : JobVoid(Job::RequestUniqueID(), function, destructorFunction) {}
+		JobVoid(const Function& function) : JobVoid(Job::RequestUniqueID(), function, [](Job* const& base) { static_cast<JobVoid*>(base)->Free(); }) {}
 
 		inline void Run() const {
 			_function();
@@ -118,14 +142,14 @@ namespace JbSystem {
 		}
 
 	private:
-		JobVoid(const int id, const Function function, const Job::DestructorFunction destructorFunction)
+		JobVoid(const JobId& id, const Function& function, const Job::DestructorFunction& destructorFunction)
 			: Job(id,
-				[](const Job* base) { static_cast<const JobVoid*>(base)->Run(); },
+				[](const Job* const& base) { static_cast<const JobVoid*>(base)->Run(); },
 				destructorFunction),
 			_function(function) {
 		}
 
-		JobVoid(const Function function, const Job::Function baseFunction, const Job::DestructorFunction destructorFunction, const int id)
+		JobVoid(const Function& function, const Job::Function& baseFunction, const Job::DestructorFunction& destructorFunction, const JobId& id)
 			: Job(id, baseFunction, destructorFunction), _function(function) {
 		}
 
@@ -134,14 +158,17 @@ namespace JbSystem {
 
 	class JobSystemVoidJob : public JobVoid {
 	public:
-		typedef void(*DeconstructorCallback)(JobSystemVoidJob*);
+		typedef void(*DeconstructorCallback)(JobSystemVoidJob* const&);
+
+		virtual ~JobSystemVoidJob() = default;
+
 
 		inline void Free() {
 			_deconstructorCallback(this);
 		}
 
-		JobSystemVoidJob(const Function function, const DeconstructorCallback deconstructorCallback)
-			: JobVoid(function, [](Job* base) { static_cast<JobSystemVoidJob*>(base)->Free(); }), _deconstructorCallback(deconstructorCallback) {}
+		JobSystemVoidJob(const Function& function, const DeconstructorCallback& deconstructorCallback)
+			: JobVoid(function, [](Job* const& base) { static_cast<JobSystemVoidJob*>(base)->Free(); }), _deconstructorCallback(deconstructorCallback) {}
 
 	private:
 		const DeconstructorCallback _deconstructorCallback;

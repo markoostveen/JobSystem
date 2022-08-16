@@ -14,41 +14,61 @@ void JobSystemWorker::ThreadLoop() {
 
 	int noWork = 0;
 
-	while (Active) {
-		Job* job = TryTakeJob();
-		if (job != nullptr) {
-			job->Run();
-			FinishJob(job);
-			noWork = 0;
-			continue;
-		}
+	try {
 
-		_jobsystem->ExecuteJob(JobPriority::Low);
-		noWork++;
+		while (true) {
 
-		if (noWork > 500000) {
+			_busyLock.lock();
+			Job* job = TryTakeJob();
 
-			// Check if other works are active
-			bool otherWorkersActive = false;
-			for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
-			{
-				JobSystemWorker& worker = _jobsystem->_workers[i];
-				if (worker.Active && this != &worker) {
-					otherWorkersActive = true;
-					continue;
-				}
+			if (job == nullptr) {
+				job = _jobsystem->TakeJobFromWorker(JobPriority::Low);
 			}
 
-			// Do not shutdown in case there are no other workers
-			if (otherWorkersActive || !_jobsystem->Active || _shutdownRequested.load()) {
+			_busyJob.store(job);
+			_busyLock.unlock();
+
+			if (job != nullptr) {
+				job->Run();
+				FinishJob(job);
+				_busyJob.store(nullptr);
+				noWork = 0;
+				continue;
+			}
+
+			noWork++;
+
+			if (_shutdownRequested.load())
 				break;
-			}
 
-			std::this_thread::yield();
+			if (noWork > 500000) {
+
+				// Check if other works are active
+				bool otherWorkersActive = false;
+				for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
+				{
+					JobSystemWorker& worker = _jobsystem->_workers[i];
+					if (worker.IsRunning() && this != &worker) {
+						otherWorkersActive = true;
+						continue;
+					}
+				}
+
+				// Do not shutdown in case there are no other workers
+				if (otherWorkersActive || !_jobsystem->Active) {
+					break;
+				}
+
+				std::this_thread::yield();
+			}
 		}
 	}
+	catch (std::exception& e) {
+		assert(false);
+		throw e;
+	}
 
-	Active = false;
+	Active.store(false);
 	//std::cout << "Worker has exited!" << std::endl;
 }
 
@@ -57,17 +77,27 @@ void JbSystem::JobSystemWorker::RequestShutdown()
 	_shutdownRequested.store(true);
 }
 
-JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
+bool JbSystem::JobSystemWorker::Busy()
 {
-	_jobsystem = jobsystem;
-	Active = false;
-	_shutdownRequested.store(false);
+	_busyLock.lock();
+	bool result = _busyJob.load() != nullptr;
+	_busyLock.unlock();
+	return result;
+}
+
+JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
+	: _jobsystem(jobsystem), Active(false), _shutdownRequested(false),
+	_modifyingThread(), _highPriorityTaskQueue(), _normalPriorityTaskQueue(), _lowPriorityTaskQueue(),
+	_completedJobsMutex(), _completedJobs(), _scheduledJobsMutex(), _scheduledJobs(),
+	_isRunningMutex(), _worker(),
+	_busyLock(), _busyJob()
+{
 }
 
 JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
 {
 	_jobsystem = worker._jobsystem;
-	Active = false;
+	Active.store(false);
 }
 
 JbSystem::JobSystemWorker::~JobSystemWorker()
@@ -76,9 +106,9 @@ JbSystem::JobSystemWorker::~JobSystemWorker()
 		_worker.join();
 }
 
-const bool JobSystemWorker::IsRunning()
+bool JobSystemWorker::IsRunning()
 {
-	return Active;
+	return Active.load();
 }
 
 void JbSystem::JobSystemWorker::WaitForShutdown()
@@ -88,13 +118,15 @@ void JbSystem::JobSystemWorker::WaitForShutdown()
 
 void JobSystemWorker::Start()
 {
-	if (Active) {
-		std::cout << "Jobsystem thread detected an error, cannot continue!" << std::endl;
-		std::terminate();
+	_jobsystem->OptimizePerformance(); // Determin best scaling options
+
+	_modifyingThread.lock();
+	if (IsRunning()) {
+		_modifyingThread.unlock();
+		return;
 	}
 
-	Active = true;
-	_jobsystem->OptimizePerformance(); // Determin best scaling options
+	Active.store(true);
 
 
 	if (_worker.get_id() != std::thread::id()) {
@@ -104,6 +136,7 @@ void JobSystemWorker::Start()
 			_worker.detach();
 	}
 	_worker = std::thread([](JobSystemWorker* worker){ worker->_jobsystem->WorkerLoop(worker); }, this);
+	_modifyingThread.unlock();
 }
 
 int JbSystem::JobSystemWorker::WorkerId()
@@ -113,16 +146,13 @@ int JbSystem::JobSystemWorker::WorkerId()
 
 Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 {
-	//Return a result based on priority of a job
-	Job* value = nullptr;
-
 	bool locked = _modifyingThread.try_lock();
 	if (!locked)
-		return value;
+		return nullptr;
 
 	if (maxTimeInvestment >= JobPriority::High) {
 		if (!_highPriorityTaskQueue.empty()) {
-			value = _highPriorityTaskQueue.front();
+			Job* value = _highPriorityTaskQueue.front();
 			_highPriorityTaskQueue.pop();
 			_modifyingThread.unlock();
 			return value;
@@ -131,7 +161,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 
 	if (maxTimeInvestment >= JobPriority::Normal) {
 		if (!_normalPriorityTaskQueue.empty()) {
-			value = _normalPriorityTaskQueue.front();
+			Job* value = _normalPriorityTaskQueue.front();
 			_normalPriorityTaskQueue.pop();
 			_modifyingThread.unlock();
 			return value;
@@ -140,7 +170,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 
 	if (maxTimeInvestment >= JobPriority::Low) {
 		if (!_lowPriorityTaskQueue.empty()) {
-			value = _lowPriorityTaskQueue.front();
+			Job* value = _lowPriorityTaskQueue.front();
 			_lowPriorityTaskQueue.pop();
 			_modifyingThread.unlock();
 			return value;
@@ -148,18 +178,29 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 	}
 
 	_modifyingThread.unlock();
-	return value;
+	return nullptr;
 }
 
-void JbSystem::JobSystemWorker::GiveJob(Job*& newJob, const JobPriority priority)
+void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJob)
 {
-	const int jobId = newJob->GetId();
+	const int& id = previouslyScheduledJob.ID();
+	_scheduledJobsMutex.lock();
+	if(_scheduledJobs.contains(id))
+		_scheduledJobs.erase(id);
+	_scheduledJobsMutex.unlock();
+}
 
-	if (!IsJobScheduled(jobId)) {
-		_scheduledJobsMutex.lock();
-		_scheduledJobs.emplace(jobId);
-		_scheduledJobsMutex.unlock();
+bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority priority)
+{
+	if (!IsRunning()) {
+		return false;
 	}
+
+	const JobId& jobId = newJob->GetId();
+
+	_scheduledJobsMutex.lock();
+	_scheduledJobs.emplace(jobId.ID());
+	_scheduledJobsMutex.unlock();
 
 	_modifyingThread.lock();
 
@@ -177,23 +218,23 @@ void JbSystem::JobSystemWorker::GiveJob(Job*& newJob, const JobPriority priority
 
 	_modifyingThread.unlock();
 
-	if (!Active)
-		Start();
+	return true;
+
 }
 
-void JbSystem::JobSystemWorker::GiveFutureJob(int& jobId)
+void JbSystem::JobSystemWorker::GiveFutureJob(const JobId& jobId)
 {
 	_scheduledJobsMutex.lock();
-	_scheduledJobs.emplace(jobId);
+	_scheduledJobs.emplace(jobId.ID());
 	_scheduledJobsMutex.unlock();
 }
 
-void JbSystem::JobSystemWorker::GiveFutureJobs(const std::vector<const Job*>& newjobs, int startIndex, int size)
+void JbSystem::JobSystemWorker::GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size)
 {
 	_scheduledJobsMutex.lock();
 	for (size_t i = 0; i < size; i++)
 	{
-		_scheduledJobs.emplace(newjobs[startIndex + i]->GetId());
+		_scheduledJobs.emplace(newjobs[startIndex + i]->GetId().ID());
 	}
 	_scheduledJobsMutex.unlock();
 
@@ -201,30 +242,29 @@ void JbSystem::JobSystemWorker::GiveFutureJobs(const std::vector<const Job*>& ne
 
 void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
-	const int jobId = job->GetId();
-	job->Free();
+	const JobId jobId = job->GetId();
+	const int& id = jobId.ID();
 	_completedJobsMutex.lock();
-	_completedJobs.emplace(jobId);
+	_completedJobs.emplace(id);
 	_completedJobsMutex.unlock();
-	_scheduledJobsMutex.lock();
-	_scheduledJobs.erase(jobId);
-	_scheduledJobsMutex.unlock();
+	UnScheduleJob(jobId);
+	job->Free();
 }
 
-bool JbSystem::JobSystemWorker::IsJobScheduled(const int& jobId)
+bool JbSystem::JobSystemWorker::IsJobScheduled(const JobId& jobId)
 {
 	_scheduledJobsMutex.lock();
-	bool contains = _scheduledJobs.contains(jobId);
+	bool contains = _scheduledJobs.contains(jobId.ID());
 	_scheduledJobsMutex.unlock();
 	return contains;
 }
 
-bool JbSystem::JobSystemWorker::IsJobFinished(const int& jobId)
+bool JbSystem::JobSystemWorker::IsJobFinished(const JobId& jobId)
 {
 	bool contains = false;
 	_completedJobsMutex.lock();
 	if (!_completedJobs.empty())
-		contains = _completedJobs.contains(jobId);
+		contains = _completedJobs.contains(jobId.ID());
 	_completedJobsMutex.unlock();
 	return contains;
 }

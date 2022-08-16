@@ -7,22 +7,27 @@
 
 using namespace JbSystem;
 
-//JbSystem::Job::Job()
-//	: _priority(JobPriority::None), _id(0), _function({})
-//{
-//}
-
-const int JbSystem::Job::GetId() const
+JobId JbSystem::Job::GetId() const
 {
 	return _id;
 }
 
 static std::atomic<int> Identifier;
-const int JbSystem::Job::RequestUniqueID()
+const JobId JbSystem::Job::RequestUniqueID()
 {
-	return Identifier++;
+	return JobId{ Identifier++ };
 }
 
-JbSystem::Job::Job(const int id, const Function callback, const DestructorFunction destructorfunction)
+JbSystem::Job::Job(const JobId& id, const Function& callback, const DestructorFunction& destructorfunction)
 	: _basefunction(callback), _destructorfunction(destructorfunction), _id(id) {
+}
+
+JbSystem::JobId::JobId(const int& Id)
+	: _id(Id)
+{
+}
+
+const int& JbSystem::JobId::ID() const
+{
+	return _id;
 }

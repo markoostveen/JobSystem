@@ -27,7 +27,7 @@ bool RunDependendParallelJobs() {
 	auto jobIds2 = jobSystem->Schedule(job2, JobPriority::High);
 
 	auto singleJob = JobSystem::CreateJob([]() {});
-	int singleJobId = jobSystem->Schedule(singleJob, JobPriority::High, jobIds);
+	const JobId& singleJobId = jobSystem->Schedule(singleJob, JobPriority::High, jobIds);
 	jobIds2.emplace_back(singleJobId);
 
 	auto job3 = JobSystem::CreateParallelJob(0, 10000, 100, [](const int& index) {});

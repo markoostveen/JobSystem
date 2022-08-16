@@ -5,13 +5,14 @@
 #include <algorithm>
 
 #include "boost/container/small_vector.hpp"
+#include <boost/range/adaptor/reversed.hpp>
 
 namespace JbSystem {
 	const int MaxThreadDepth = 20;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
 	static thread_local bool unwind = false; // when true we can't help with any new jobs, instead we finish all our previous jobs
 	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* MaxThreadDepth> jobStack; // stack of all jobs our current thread is executing
-	bool JobInStack(int JobId) {
+	bool JobInStack(const JobId& JobId) {
 		for (int i = 0; i < jobStack.size(); i++)
 		{
 			if (jobStack[i]->GetId() == JobId)
@@ -29,8 +30,9 @@ namespace JbSystem {
 
 	JobSystem::~JobSystem()
 	{
-		auto remainingJobs = Shutdown();
-		delete remainingJobs;
+		for (Job*& leftOverJob : *Shutdown()) {
+			leftOverJob->Free();
+		}
 	}
 
 	void JobSystem::ReConfigure(const int threadCount)
@@ -44,7 +46,7 @@ namespace JbSystem {
 
 		bool firstStartup = _activeWorkerCount.load() == 0;
 
-		std::vector<Job*>* jobs = nullptr;
+		std::shared_ptr<std::vector<Job*>> jobs;
 		if (!firstStartup) {
 			//std::cout << "JobSystem is shutting down" << std::endl;
 
@@ -75,23 +77,24 @@ namespace JbSystem {
 		//Reschedule saved jobs
 
 		if (!firstStartup) {
-			auto rescheduleJobFunction = [](auto jobSystem, auto jobs) {
+			auto rescheduleJobFunction = [](JobSystem* jobSystem, auto jobs) {
 				const size_t totalJobs = jobs->size();
 				size_t iteration = 0;
 				while (iteration < totalJobs) {
 					for (int i = 0; i < jobSystem->_workerCount && iteration < totalJobs; i++)
 					{
-						Job* newJob = jobs->at(iteration);
+						Job*& newJob = jobs->at(iteration);
 
-						jobSystem->_workers[i].GiveJob(newJob, JobPriority::High);
+						if (!jobSystem->_workers[i].GiveJob(newJob, JobPriority::High)) {
+							jobSystem->SafeRescheduleJob(newJob);
+						}
 						iteration++;
 					}
 				};
-				delete jobs;
 			};
 
-			const Job* rescheduleJob = CreateJobWithParams(rescheduleJobFunction, this, jobs);
-			const int rescheduleJobId = Schedule(rescheduleJob, JobPriority::High);
+			Job* rescheduleJob = CreateJobWithParams(rescheduleJobFunction, this, jobs);
+			const JobId& rescheduleJobId = Schedule(rescheduleJob, JobPriority::High);
 
 			//wait for rescheduling to be done, then return the caller
 			WaitForJobCompletion(rescheduleJobId);
@@ -100,7 +103,7 @@ namespace JbSystem {
 		//std::cout << "JobSystem started with " << threadCount << " workers!" << std::endl;
 	}
 
-	std::vector<Job*>* JbSystem::JobSystem::Shutdown()
+	std::shared_ptr<std::vector<Job*>> JbSystem::JobSystem::Shutdown()
 	{
 		//Wait for jobsystem to finish remaining jobs
 		bool finished = false;
@@ -123,13 +126,14 @@ namespace JbSystem {
 		bool wasActive = false;
 		do {
 			wasActive = false;
-			for (JobSystemWorker& worker : _workers) {
-				if (!worker.Active)
+			for (JobSystemWorker& worker : boost::adaptors::reverse(_workers)) {
+				if (!worker.IsRunning())
 					continue;
 
-				worker.RequestShutdown();
+				if (!worker.Busy()) {
+					worker.RequestShutdown();
+				}
 				wasActive = true;
-				break;
 			}
 		} while (wasActive);
 
@@ -137,6 +141,9 @@ namespace JbSystem {
 		for (JobSystemWorker& worker : _workers) {
 			worker.WaitForShutdown();
 		}
+
+		auto remainingJobs = StealAllJobsFromWorkers();
+		allJobs->insert(allJobs->begin(), remainingJobs->begin(), remainingJobs->end());
 
 		_activeWorkerCount.store(0);
 		_workers.clear();
@@ -162,7 +169,16 @@ namespace JbSystem {
 
 		unwind = false;
 		threadDepth++;
-		ExecuteJobFromWorker(maxTimeInvestment);
+		{
+			Job* primedJob = TakeJobFromWorker(maxTimeInvestment);
+
+			if (primedJob != nullptr) {
+				jobStack.emplace_back(primedJob);
+				primedJob->Run();
+				auto it = std::find(jobStack.begin(), jobStack.end(), primedJob);
+				jobStack.erase(it);
+			}
+		}
 		threadDepth--;
 	}
 
@@ -195,9 +211,9 @@ namespace JbSystem {
 		return JobSystemSingleton;
 	}
 
-	const int JobSystem::Schedule(const Job* newjob, const JobPriority priority)
+	JobId JobSystem::Schedule(Job* const& newjob, const JobPriority priority)
 	{
-		const int jobId = newjob->GetId();
+		JobId jobId = newjob->GetId();
 
 		Schedule(GetRandomWorker(), newjob, priority);
 
@@ -218,7 +234,7 @@ namespace JbSystem {
 		return jobId;
 	}
 
-	const int JobSystem::Schedule(const Job* job, const JobPriority priority, const std::vector<int> dependencies)
+	JobId JobSystem::Schedule(Job* const& job, const JobPriority priority, const std::vector<JobId>& dependencies)
 	{
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
 		int workerId = ScheduleFutureJob(job);
@@ -230,16 +246,16 @@ namespace JbSystem {
 		return job->GetId();
 	}
 
-	const std::vector<int> JobSystem::Schedule(std::vector<const Job*> newjobs, const JobPriority priority)
+	const std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority priority)
 	{
 		return BatchScheduleJob(newjobs, priority);
 	}
 
-	const Job* JobSystem::CreateJob(void(*function)())
+	Job* JobSystem::CreateJob(void(*function)())
 	{
 		struct VoidJobTag {};
 		void* location = boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::malloc();
-		auto deconstructorCallback = [](JobSystemVoidJob* job) { boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::free(job); };
+		auto deconstructorCallback = [](JobSystemVoidJob* const& job) { boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::free(job); };
 
 		return new(location) JobSystemVoidJob(function, deconstructorCallback);
 	}
@@ -249,7 +265,7 @@ namespace JbSystem {
 		const_cast<Job*&>(job)->Free();
 	}
 
-	std::vector<const Job*> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, void(*function)(const int&))
+	std::vector<Job*> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, void(*function)(const int&))
 	{
 		if (batchSize < 1)
 			batchSize = 1;
@@ -274,7 +290,7 @@ namespace JbSystem {
 			totalBatches++;
 		}
 
-		auto jobs = std::vector<const Job*>();
+		auto jobs = std::vector<Job*>();
 		jobs.reserve(totalBatches + 1);
 
 		for (int i = 0; i < totalBatches; i++)
@@ -294,22 +310,22 @@ namespace JbSystem {
 		return jobs;
 	}
 
-	int JobSystem::ScheduleFutureJob(const Job*& newFutureJob)
+	int JobSystem::ScheduleFutureJob(Job* const& newFutureJob)
 	{
 		const int workerId = GetRandomWorker();
-		int jobId = newFutureJob->GetId();
+		const JobId& jobId = newFutureJob->GetId();
 		_workers[workerId].GiveFutureJob(jobId);
 		return workerId;
 	}
 
-	std::vector<int> JobSystem::BatchScheduleJob(const std::vector<const Job*>& newjobs, const JobPriority priority)
+	const std::vector<JobId> JobSystem::BatchScheduleJob(const std::vector<Job*>& newjobs, const JobPriority priority)
 	{
 		auto workerIds = BatchScheduleFutureJob(newjobs);
 
 		for (size_t i = 0; i < workerIds.size(); i++)
 		{
-			const Job* newJob = newjobs[i];
-			Schedule(workerIds[i], newJob, priority);
+			Job* const& newJob = newjobs.at(i);
+			Schedule(workerIds.at(i), newJob, priority);
 
 			// Make sure that all workers are still running correctly
 			_schedulesTillMaintainance--;
@@ -322,7 +338,7 @@ namespace JbSystem {
 			Cleanup();
 		}
 
-		std::vector<int> jobIds;
+		std::vector<JobId> jobIds;
 		size_t jobCount = newjobs.size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
@@ -333,10 +349,10 @@ namespace JbSystem {
 		return jobIds;
 	}
 
-	std::vector<int> JobSystem::BatchScheduleFutureJob(const std::vector<const Job*>& newjobs)
+	const std::vector<int> JobSystem::BatchScheduleFutureJob(const std::vector<Job*>& newjobs)
 	{
 		std::vector<int> workerIds;
-		const int totalAmountOfJobs = newjobs.size();
+		const int totalAmountOfJobs = int(newjobs.size());
 		workerIds.resize(totalAmountOfJobs);
 
 		int workerCount = _activeWorkerCount.load();
@@ -365,19 +381,19 @@ namespace JbSystem {
 		{
 			int workerId = i;
 			workerIds[totalAmountOfJobs - i - 1] = i;
-			int jobId = newjobs[totalAmountOfJobs - i - 1]->GetId();
+			const JobId jobId = newjobs[totalAmountOfJobs - i - 1]->GetId();
 			_workers[workerId].GiveFutureJob(jobId);
 		}
 
 		return workerIds;
 	}
 
-	const std::vector<int> JobSystem::Schedule(std::vector<const Job*> newjobs, const JobPriority priority, const std::vector<int> dependencies)
+	const std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority priority, const std::vector<JobId>& dependencies)
 	{
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
 		std::vector<int> workerIds = BatchScheduleFutureJob(newjobs);
 
-		std::vector<int> jobIds;
+		std::vector<JobId> jobIds;
 		size_t jobCount = newjobs.size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
@@ -389,12 +405,12 @@ namespace JbSystem {
 		// These challanges were, having a data type that is copyable as parameters of the callback
 		// lifetime of 'workerids' and 'newjobs' when executing the callback on another thread.
 		struct JobData {
-			JobData(std::vector<int> workerIds, std::vector<const Job*> newjobs)
+			JobData(std::vector<int> workerIds, const std::vector<Job*>& newjobs)
 				: WorkerIds(workerIds.data(), workerIds.data() + workerIds.size()), Newjobs(newjobs.data(), newjobs.data() + newjobs.size()) {
 			}
 
 			std::vector<int> WorkerIds;
-			std::vector<const Job*> Newjobs;
+			const std::vector<Job*> Newjobs;
 		};
 
 		auto scheduleCallback = [](JobSystem* jobSystem, JobData* jobData, const JobPriority priority)
@@ -410,7 +426,7 @@ namespace JbSystem {
 		return jobIds;
 	}
 
-	bool JobSystem::IsJobCompleted(const int jobId)
+	bool JobSystem::IsJobCompleted(const JobId& jobId)
 	{
 		for (int i = 0; i < _workerCount; i++)
 		{
@@ -424,7 +440,7 @@ namespace JbSystem {
 		return true;
 	}
 
-	bool JobSystem::IsJobScheduled(const int jobId)
+	bool JobSystem::IsJobScheduled(const JobId& jobId)
 	{
 		for (int i = 0; i < _workerCount; i++)
 		{
@@ -434,7 +450,7 @@ namespace JbSystem {
 		return false;
 	}
 
-	bool JobSystem::WaitForJobCompletion(int jobId, const JobPriority maximumHelpEffort)
+	bool JobSystem::WaitForJobCompletion(const JobId& jobId, const JobPriority maximumHelpEffort)
 	{
 		assert(!JobInStack(jobId));  //Job inside workers stack, deadlock encountered!
 
@@ -451,7 +467,7 @@ namespace JbSystem {
 		return jobFinished;
 	}
 
-	bool JobSystem::WaitForJobCompletion(int jobId, int maxMicroSecondsToWait, const JobPriority maximumHelpEffort)
+	bool JobSystem::WaitForJobCompletion(const JobId& jobId, int maxMicroSecondsToWait, const JobPriority maximumHelpEffort)
 	{
 		assert(!JobInStack(jobId)); //Job inside workers stack, deadlock encountered!
 
@@ -478,7 +494,7 @@ namespace JbSystem {
 		return jobFinished;
 	}
 
-	void JobSystem::WaitForJobCompletion(std::vector<int>& jobIds, JobPriority maximumHelpEffort)
+	void JobSystem::WaitForJobCompletion(const std::vector<JobId>& jobIds, JobPriority maximumHelpEffort)
 	{
 		for (int i = 0; i < jobIds.size(); i++)
 		{
@@ -508,24 +524,24 @@ namespace JbSystem {
 		boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::free(finished);
 	}
 
-	void JobSystem::ExecuteJobFromWorker(const JobPriority maxTimeInvestment)
+	Job* JobSystem::TakeJobFromWorker(const JobPriority maxTimeInvestment)
 	{
 		JobSystemWorker& workerThread = _workers[GetRandomWorker()];
-		Job* threadJob = workerThread.TryTakeJob(maxTimeInvestment);
-		if (threadJob != nullptr) {
+		Job* job = workerThread.TryTakeJob(maxTimeInvestment);
+		if (job == nullptr) // Was not able to take a job from specific worker
+			return job;
+		
+		workerThread.UnScheduleJob(job->GetId());
 
-			if (JobInStack(threadJob->GetId())) { // future deadlock encountered, do not execute this job!
-				Job* rescheduleJob = threadJob;
-				workerThread.GiveJob(rescheduleJob, JobPriority::High);
-				return;
-			}
+		if (JobInStack(job->GetId())) { // future deadlock encountered, do not execute this job! (Try give it back, in case that isn't possible reschedule)
+			if (!workerThread.GiveJob(job, JobPriority::High))
+				SafeRescheduleJob(job);
 
-			jobStack.emplace_back(threadJob);
-			threadJob->Run();
-			auto it = std::find(jobStack.begin(), jobStack.end(), threadJob);
-			jobStack.erase(it);
-			workerThread.FinishJob(threadJob);
+			return nullptr;
 		}
+
+
+		return job;
 	}
 
 	void JobSystem::Cleanup()
@@ -553,7 +569,7 @@ namespace JbSystem {
 		{
 			JobSystemWorker& worker = _workers[i];
 			if (i > _activeWorkerCount - 1) {
-				if(worker.Active)
+				if(worker.IsRunning())
 					favorShrink -= (activeWorkerCount / _workerCount) * 2; // delay shrink when inactive workers are still running, because this will lead to jobs being unbalanced
 				continue;
 			}
@@ -561,12 +577,12 @@ namespace JbSystem {
 			if (!worker._modifyingThread.try_lock())
 				continue;
 
-			int lowPriority = worker._lowPriorityTaskQueue.size();
-			int mediumPriority = worker._normalPriorityTaskQueue.size();
-			int highPriority = worker._highPriorityTaskQueue.size();
+			size_t lowPriority = worker._lowPriorityTaskQueue.size();
+			size_t mediumPriority = worker._normalPriorityTaskQueue.size();
+			size_t highPriority = worker._highPriorityTaskQueue.size();
 			worker._modifyingThread.unlock();
 
-			int bias = 1 + (highPriority * 3) + (mediumPriority * 10) + (lowPriority * 15);
+			size_t bias = 1 + (highPriority * 3) + (mediumPriority * 10) + (lowPriority * 15);
 
 			if (bias == 1)
 				favorShrink++;
@@ -600,39 +616,21 @@ namespace JbSystem {
 		int workerCount = _activeWorkerCount.load();
 		for (int i = 0; i < workerCount; i++)
 		{
-			if (!_workers[i].IsRunning() && _workers[i].Active == true)
+			if (!_workers[i].IsRunning())
 				_workers[i].Start();
 		}
 	}
 
 	bool JobSystem::RescheduleWorkerJobs(JobSystemWorker& worker)
 	{
-		if (!worker._modifyingThread.try_lock())
-			return false;
-
 		constexpr int defaultWorker = 0;
+		Job* job = worker.TryTakeJob(JobPriority::Low);
+		while (job != nullptr) {
+			worker.UnScheduleJob(job->GetId());
+			Schedule(GetRandomWorker(), job, JobPriority::High);
+			job = worker.TryTakeJob(JobPriority::Low);
+		};
 
-		worker._scheduledJobsMutex.lock();
-		while (!worker._lowPriorityTaskQueue.empty()) {
-			const Job* job = worker._lowPriorityTaskQueue.front();
-			worker._scheduledJobs.erase(job->GetId());
-			Schedule(defaultWorker, job, JobPriority::Low);
-			worker._lowPriorityTaskQueue.pop();
-		}
-		while (!worker._normalPriorityTaskQueue.empty()) {
-			const Job* job = worker._normalPriorityTaskQueue.front();
-			worker._scheduledJobs.erase(job->GetId());
-			Schedule(defaultWorker, job, JobPriority::Normal);
-			worker._normalPriorityTaskQueue.pop();
-		}
-		while (!worker._highPriorityTaskQueue.empty()) {
-			const Job* job = worker._highPriorityTaskQueue.front();
-			worker._scheduledJobs.erase(job->GetId());
-			Schedule(defaultWorker, job, JobPriority::High);
-			worker._highPriorityTaskQueue.pop();
-		}
-		worker._scheduledJobsMutex.unlock();
-		worker._modifyingThread.unlock();
 		return true;
 	}
 
@@ -650,37 +648,67 @@ namespace JbSystem {
 		return rand() % _activeWorkerCount.load();
 	}
 
-	const int JobSystem::Schedule(const int& workerId, const Job*& newjob, const JobPriority priority)
+	JobId JobSystem::Schedule(const int& workerId, Job* const& newjob, const JobPriority priority)
 	{
-		_workers[workerId].GiveJob(const_cast<Job*&>(newjob), priority); // Job is no longer our possession
+		if (!_workers[workerId].GiveJob(newjob, priority)) // Job is no longer our possession
+		{
+			SafeRescheduleJob(newjob);
+		}
 
 		return newjob->GetId();
 	}
 
-	const std::vector<int> JobSystem::Schedule(const std::vector<int>& workerIds, const JobPriority priority, std::vector<const Job*> newjobs)
+	void JobSystem::SafeRescheduleJob(Job* const& oldJob)
 	{
-		std::vector<int> jobIds;
+		Job* retryReschedulingJob = JobSystem::CreateJobWithParams([](Job* unsuccessfulJob, JobSystem* jobSystem) {
+
+			jobSystem->Schedule(unsuccessfulJob, JobPriority::High);
+
+			}, oldJob, this);
+
+		// Try to schedule in either one of the required threads, in case it's not possible throw error
+		if (!_workers[0].IsRunning())
+			_workers[0].Start();
+
+		if (_workers[0].GiveJob(retryReschedulingJob, JobPriority::High))
+			return;
+
+		if (!_workers[1].IsRunning())
+			_workers[1].Start();
+
+		if (_workers[1].GiveJob(retryReschedulingJob, JobPriority::High))
+			return;
+
+		const char* errorMessage = "Jobsystem error, wasn't able to reschedule job due even with previous rescheduling falliure";
+		std::cout << errorMessage;
+		throw std::runtime_error(errorMessage);
+	}
+
+	const std::vector<JobId> JobSystem::Schedule(const std::vector<int>& workerIds, const JobPriority priority, const std::vector<Job*>& newjobs)
+	{
+		std::vector<JobId> jobIds;
 		size_t jobCount = newjobs.size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
 		{
-			jobIds.emplace_back(Schedule(workerIds[i], newjobs[i], priority));
+			jobIds.emplace_back(Schedule(workerIds.at(i), newjobs.at(i), priority));
 		}
 
 		return jobIds;
 	}
 
-	std::vector<Job*>* JobSystem::StealAllJobsFromWorkers()
+	std::shared_ptr<std::vector<Job*>> JobSystem::StealAllJobsFromWorkers()
 	{
-		auto jobs = new std::vector<Job*>();
+		auto jobs = std::make_shared<std::vector<Job*>>();
 		jobs->reserve(10000);
 		for (int i = 0; i < _workerCount; i++)
 		{
-			auto job = _workers[i].TryTakeJob();
-			while (job != nullptr) {
+			JobSystemWorker& worker = _workers.at(i);
+			Job* job = nullptr;
+			do {
+				job = worker.TryTakeJob();
 				jobs->emplace_back(const_cast<Job*>(job)); // Take ownership again
-				job = _workers[i].TryTakeJob();
-			}
+			} while (job != nullptr);
 		}
 		return jobs;
 	}
