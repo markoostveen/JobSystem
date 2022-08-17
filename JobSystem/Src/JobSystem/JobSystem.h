@@ -296,7 +296,7 @@ namespace JbSystem {
 				jobSystem->Schedule(workerIds, callbackJobs);
 			}, this, workerIds, newjobs);
 
-		std::vector<int> jobIds;
+		std::vector<JobId> jobIds;
 		size_t jobCount = newjobs.size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
