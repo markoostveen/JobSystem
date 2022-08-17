@@ -39,7 +39,7 @@ namespace JbSystem {
 		static Job* CreateJobWithParams(typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
 		static Job* CreateJob(void (*function)());
 
-		static void DestroyNonScheduledJob(const Job*& job);
+		static void DestroyNonScheduledJob(Job*& job);
 
 		//Parallel
 		template<class ...Args>
@@ -106,7 +106,7 @@ namespace JbSystem {
 		/// <param name="jobId"></param>
 		/// <param name="maxMicroSecondsToWait">when elapsed function will return false if job hasn't been completed yet, 0 = infinity</param>
 		/// <returns>weather or not the job was completed in time</returns>
-		bool WaitForJobCompletion(const JobId& jobId, const JobPriority maximumHelpEffort = JobPriority::Low);
+		bool WaitForJobCompletion(const JobId& jobId, JobPriority maximumHelpEffort = JobPriority::Low);
 
 		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed
@@ -163,7 +163,7 @@ namespace JbSystem {
 		const std::vector<JobId> BatchScheduleJob(const std::vector<Job*>& newjobs, const JobPriority priority);
 		const std::vector<int> BatchScheduleFutureJob(const std::vector<Job*>& newjobs);
 
-		Job* TakeJobFromWorker(const JobPriority maxTimeInvestment = JobPriority::Low);
+		Job* TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment = JobPriority::Low);
 
 		void Cleanup();
 
@@ -184,7 +184,7 @@ namespace JbSystem {
 		/// <returns></returns>
 		JobId Schedule(const int& workerId, Job* const& newjob, const JobPriority priority);
 
-		void SafeRescheduleJob(Job* const& oldJob);
+		void SafeRescheduleJob(Job* const& oldJob, JobSystemWorker& oldWorker);
 
 		const std::vector<JobId> Schedule(const std::vector<int>& workerIds, const JobPriority priority, const std::vector<Job*>& newjobs);
 

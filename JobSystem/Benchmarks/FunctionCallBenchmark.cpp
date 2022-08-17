@@ -3,10 +3,11 @@
 #include <atomic>
 #include <iostream>
 #include <chrono>
+#include <memory>
 
 using namespace JbSystem;
-constexpr int totalIterations = 10000;
-constexpr int repeatBeforeValid = 1000;
+constexpr int totalIterations = 1000;
+constexpr int repeatBeforeValid = 10;
 
 inline void TestCall() {
 }
@@ -41,7 +42,7 @@ double CallJobHeap() {
 
 	for (size_t i = 0; i < totalIterations; i++)
 	{
-		const Job* job = JobSystem::CreateJob(TestCall);
+		Job* job = JobSystem::CreateJob(TestCall);
 		job->Run();
 		JobSystem::DestroyNonScheduledJob(job);
 	}
@@ -50,39 +51,118 @@ double CallJobHeap() {
 	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
 
-void SimpleCallBenchmark() {
-	double totalTimeDirect = 0;
-	double totalTimeJob = 0;
-	double totalTimeJobHeap = 0;
+double CallJobHeapWorker() {
+	std::chrono::time_point start = std::chrono::high_resolution_clock::now();
 
-	for (size_t i = 0; i < repeatBeforeValid; i++)
+	for (size_t i = 0; i < totalIterations; i++) // No not multithread instead schedule on random worker
 	{
-		totalTimeDirect += CallDirect();
-		totalTimeJob += CallJobStack();
-		totalTimeJobHeap += CallJobHeap();
+		Job* job = JobSystem::CreateJob(TestCall);
+		JobSystem* jobsystem = JobSystem::GetInstance();
+		JobId id = jobsystem->Schedule(job, JobPriority::Low);
+		jobsystem->WaitForJobCompletion(id, JobPriority::High);
 	}
 
-	double directAverageTime = totalTimeDirect / repeatBeforeValid;
-	double jobAverageTime = totalTimeJob / repeatBeforeValid;
-	double heapAverageTime = totalTimeJobHeap / repeatBeforeValid;
+	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+}
 
-	std::cout << "direct calls per " << totalIterations << " times took " << directAverageTime / 1000 << "us" << std::endl;
-	std::cout << "job on stack calls per " << totalIterations << " times took " << jobAverageTime / 1000 << "us" << std::endl;
-	std::cout << "job on heap calls per " << totalIterations << " times took " << heapAverageTime / 1000 << "us" << std::endl;
+double CallMultiJobHeapWorker() {
+	std::chrono::time_point start = std::chrono::high_resolution_clock::now();
+
+	auto job = JobSystem::CreateParallelJob(0, totalIterations, 10, [](const int& index) {
+			TestCall();
+		});
+
+	JobSystem* jobsystem = JobSystem::GetInstance();
+	auto id = jobsystem->Schedule(job, JobPriority::High);
+	jobsystem->WaitForJobCompletion(id, JobPriority::Low);
+
+	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+}
+
+int runIndex = 0;
+
+void SimpleCallBenchmark() {
+	auto totalTimeDirect = std::make_shared<double>();
+	auto totalTimeJob = std::make_shared<double>();
+	auto totalTimeJobHeap = std::make_shared<double>();
+	auto totalTimeJobHeapWorker = std::make_shared<double>();
+	auto totalTimeJobHeapWorkerMulti = std::make_shared<double>();
+	auto mutex = std::make_shared<JbSystem::mutex>();
+
+
+	auto job = JobSystem::CreateParallelJob(0, std::thread::hardware_concurrency() - 1, 1, [](const int& index, auto mutex, auto totalTimeDirect, auto totalTimeJob, auto totalTimeJobHeap, auto totalTimeJobHeapWorker, auto totalTimeJobHeapWorkerMulti) {
+			for (size_t i = 0; i < repeatBeforeValid; i++)
+			{
+				double time = 0;
+				time = CallDirect();
+				mutex->lock();
+				*totalTimeDirect += time;
+				mutex->unlock();
+
+				time = CallJobStack();
+				mutex->lock();
+				*totalTimeJob += time;
+				mutex->unlock();
+
+				time = CallJobHeap();
+				mutex->lock();
+				*totalTimeJobHeap += time;
+				mutex->unlock();
+
+				time = CallJobHeapWorker();
+				mutex->lock();
+				*totalTimeJobHeapWorker += time;
+				mutex->unlock();
+
+				time = CallMultiJobHeapWorker();
+				mutex->lock();
+				*totalTimeJobHeapWorkerMulti += time;
+				mutex->unlock();
+
+				std::cout << i;
+			}
+		}, mutex, totalTimeDirect, totalTimeJob, totalTimeJobHeap, totalTimeJobHeapWorker, totalTimeJobHeapWorkerMulti);
+	auto jobSystem = JobSystem::GetInstance();
+	auto jobId = jobSystem->Schedule(job, JobPriority::Normal);
+	jobSystem->WaitForJobCompletion(jobId);
+
+	double directAverageTime = *totalTimeDirect / repeatBeforeValid / 1000;
+	double jobAverageTime = *totalTimeJob / repeatBeforeValid / 1000;
+	double heapAverageTime = *totalTimeJobHeap / repeatBeforeValid / 1000;
+	double workerAverageTime = *totalTimeJobHeapWorker / repeatBeforeValid / 1000;
+	double multiWorkerAverageTime = *totalTimeJobHeapWorkerMulti / repeatBeforeValid / 1000;
+
+	std::cout << "\n Run #" << runIndex << std::endl;
+	runIndex++;
+
+	std::cout << "direct calls per " << totalIterations << " times took " << directAverageTime / totalIterations << "us on average" << std::endl;
+	std::cout << "job on stack calls per " << totalIterations << " times took " << jobAverageTime / totalIterations << "us  on average" << std::endl;
+	std::cout << "job on heap calls per " << totalIterations << " times took " << heapAverageTime / totalIterations << "us  on average" << std::endl;
+	std::cout << "job on Worker calls per " << totalIterations << " times took " << workerAverageTime / totalIterations << "us  on average" << std::endl;
+	std::cout << "job on multiple Worker calls per " << totalIterations << " times took " << multiWorkerAverageTime / totalIterations << "us  on average" << std::endl;
+
+
 
 	std::cout << "Average over " << repeatBeforeValid << " runs" << std::endl;
 
 	std::cout << std::endl;
-	std::cout << "direct calls vs Stack average difference per call " << (jobAverageTime - directAverageTime) / totalIterations << "ns" << std::endl;
-	std::cout << "direct calls vs Heap average difference per call " << (heapAverageTime - directAverageTime) / totalIterations << "ns" << std::endl;
+	std::cout << "direct calls vs Stack average difference per call " << (jobAverageTime - directAverageTime) / totalIterations << "us " << jobAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Heap average difference per call " << (heapAverageTime - directAverageTime) / totalIterations << "us " << heapAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Worker average difference per call " << (workerAverageTime - directAverageTime) / totalIterations << "us " << workerAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs multiple Worker average difference per call " << (multiWorkerAverageTime - directAverageTime) / totalIterations << "us " << multiWorkerAverageTime / directAverageTime << " times slower" << std::endl;
 	std::cout << "=======" << std::endl;
 }
 
 int main() {
-	for (size_t i = 0; i < 10; i++)
-	{
-		std::cout << "Run #" << i << std::endl;
-		SimpleCallBenchmark();
-	}
+
+	auto job = JobSystem::CreateParallelJob(0, 10, 1, [](const int& testIndex) {
+			SimpleCallBenchmark();
+		});
+
+	auto jobSystem = JobSystem::GetInstance();
+	auto id = jobSystem->Schedule(job, JobPriority::Low);
+	jobSystem->WaitForJobCompletion(id);
 	return 0;
 }

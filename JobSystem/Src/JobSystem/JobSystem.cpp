@@ -85,8 +85,10 @@ namespace JbSystem {
 					{
 						Job*& newJob = jobs->at(iteration);
 
-						if (!jobSystem->_workers[i].GiveJob(newJob, JobPriority::High)) {
-							jobSystem->SafeRescheduleJob(newJob);
+						JobSystemWorker& worker = jobSystem->_workers.at(i);
+						worker.ScheduleJob(newJob->GetId());
+						if (!worker.GiveJob(newJob, JobPriority::High)) {
+							jobSystem->SafeRescheduleJob(newJob, worker);
 						}
 						iteration++;
 					}
@@ -145,6 +147,15 @@ namespace JbSystem {
 		auto remainingJobs = StealAllJobsFromWorkers();
 		allJobs->insert(allJobs->begin(), remainingJobs->begin(), remainingJobs->end());
 
+
+		for (const auto& job : *allJobs) {
+			for (auto& worker : _workers) {
+				const JobId& id = job->GetId();
+				if (worker.IsJobScheduled(id))
+					worker.UnScheduleJob(id);
+			}
+		}
+
 		_activeWorkerCount.store(0);
 		_workers.clear();
 		_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
@@ -170,13 +181,15 @@ namespace JbSystem {
 		unwind = false;
 		threadDepth++;
 		{
-			Job* primedJob = TakeJobFromWorker(maxTimeInvestment);
+			JobSystemWorker& worker = _workers[GetRandomWorker()];
+			Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
 
 			if (primedJob != nullptr) {
 				jobStack.emplace_back(primedJob);
 				primedJob->Run();
 				auto it = std::find(jobStack.begin(), jobStack.end(), primedJob);
 				jobStack.erase(it);
+				worker.FinishJob(primedJob);
 			}
 		}
 		threadDepth--;
@@ -260,9 +273,9 @@ namespace JbSystem {
 		return new(location) JobSystemVoidJob(function, deconstructorCallback);
 	}
 
-	void JobSystem::DestroyNonScheduledJob(const Job*& job)
+	void JobSystem::DestroyNonScheduledJob(Job*& job)
 	{
-		const_cast<Job*&>(job)->Free();
+		job->Free();
 	}
 
 	std::vector<Job*> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, void(*function)(const int&))
@@ -343,7 +356,7 @@ namespace JbSystem {
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
 		{
-			jobIds.emplace_back(newjobs[i]->GetId());
+			jobIds.emplace_back(newjobs.at(i)->GetId());
 		}
 
 		return jobIds;
@@ -431,10 +444,10 @@ namespace JbSystem {
 		for (int i = 0; i < _workerCount; i++)
 		{
 			// check if a worker has finished the job
-			if (_workers[i].IsJobFinished(jobId))
+			if (_workers.at(i).IsJobFinished(jobId))
 				return true;
 
-			if (_workers[i].IsJobScheduled(jobId))
+			if (_workers.at(i).IsJobScheduled(jobId))
 				return false;
 		}
 		return true;
@@ -444,23 +457,38 @@ namespace JbSystem {
 	{
 		for (int i = 0; i < _workerCount; i++)
 		{
-			if (_workers[i].IsJobScheduled(jobId))
+			if (_workers.at(i).IsJobScheduled(jobId))
 				return true;
 		}
 		return false;
 	}
 
-	bool JobSystem::WaitForJobCompletion(const JobId& jobId, const JobPriority maximumHelpEffort)
+	bool JobSystem::WaitForJobCompletion(const JobId& jobId, JobPriority maximumHelpEffort)
 	{
 		assert(!JobInStack(jobId));  //Job inside workers stack, deadlock encountered!
 
 		bool jobFinished = IsJobCompleted(jobId);
+
+		int waitIteration = 0;
 
 		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
 		while (!jobFinished) {
 			ExecuteJob(maximumHelpEffort);// use resources to aid workers instead of sleeping
 
 			jobFinished = IsJobCompleted(jobId);
+
+			waitIteration++;
+
+			// prevent deadlocks in case all workers are waiting on jobs with lower priority
+			if (waitIteration > 20) {
+				if (maximumHelpEffort == JobPriority::High)
+					maximumHelpEffort = JobPriority::Normal;
+				else if (maximumHelpEffort == JobPriority::Normal)
+					maximumHelpEffort = JobPriority::Low;
+				else {
+					OptimizePerformance();
+				}
+			}
 		}
 		threadDepth++;
 
@@ -498,7 +526,7 @@ namespace JbSystem {
 	{
 		for (int i = 0; i < jobIds.size(); i++)
 		{
-			assert(!JobInStack(jobIds[i])); // Jobs we are waiting for were not given as dependencies and running on the calling thread!
+			assert(!JobInStack(jobIds.at(i))); // Jobs we are waiting for were not given as dependencies and running on the calling thread!
 		}
 
 		struct FinishedTag {};
@@ -524,22 +552,19 @@ namespace JbSystem {
 		boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::free(finished);
 	}
 
-	Job* JobSystem::TakeJobFromWorker(const JobPriority maxTimeInvestment)
+	Job* JobSystem::TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment)
 	{
-		JobSystemWorker& workerThread = _workers[GetRandomWorker()];
-		Job* job = workerThread.TryTakeJob(maxTimeInvestment);
+		Job* job = worker.TryTakeJob(maxTimeInvestment);
 		if (job == nullptr) // Was not able to take a job from specific worker
 			return job;
 		
-		workerThread.UnScheduleJob(job->GetId());
 
 		if (JobInStack(job->GetId())) { // future deadlock encountered, do not execute this job! (Try give it back, in case that isn't possible reschedule)
-			if (!workerThread.GiveJob(job, JobPriority::High))
-				SafeRescheduleJob(job);
+			if (!worker.GiveJob(job, JobPriority::High))
+				SafeRescheduleJob(job, worker);
 
 			return nullptr;
 		}
-
 
 		return job;
 	}
@@ -591,13 +616,13 @@ namespace JbSystem {
 				favorGrow++;
 		}
 		
-		if (favorGrow > activeWorkerCount * 0.6f && activeWorkerCount < _workerCount) {
+		if (favorGrow > activeWorkerCount * 0.4f && activeWorkerCount < _workerCount) {
 			_activeWorkerCount.store(activeWorkerCount + 1);
 			//std::cout << "Growing active workers\n";
 		}
 
 
-		if (favorShrink > activeWorkerCount * 0.6f && activeWorkerCount > 1) {
+		if (favorShrink > activeWorkerCount * 0.4f && activeWorkerCount > 1) {
 			_activeWorkerCount.store(activeWorkerCount - 1);
 			//std::cout << "Shrinking active workers\n";
 		}
@@ -650,34 +675,39 @@ namespace JbSystem {
 
 	JobId JobSystem::Schedule(const int& workerId, Job* const& newjob, const JobPriority priority)
 	{
-		if (!_workers[workerId].GiveJob(newjob, priority)) // Job is no longer our possession
+		JobSystemWorker& worker = _workers.at(workerId);
+
+		const JobId& id = newjob->GetId();
+		if (!worker.IsJobScheduled(id))
+			worker.ScheduleJob(id);
+
+		if (!worker.GiveJob(newjob, priority))
 		{
-			SafeRescheduleJob(newjob);
+			SafeRescheduleJob(newjob, worker);
 		}
 
-		return newjob->GetId();
+		return id;
 	}
 
-	void JobSystem::SafeRescheduleJob(Job* const& oldJob)
+	void JobSystem::SafeRescheduleJob(Job* const& oldJob, JobSystemWorker& oldWorker)
 	{
-		Job* retryReschedulingJob = JobSystem::CreateJobWithParams([](Job* unsuccessfulJob, JobSystem* jobSystem) {
+		const JobId& id = oldJob->GetId();
 
-			jobSystem->Schedule(unsuccessfulJob, JobPriority::High);
+		for (size_t i = 0; i < 2; i++)
+		{
+			JobSystemWorker& worker = _workers.at(i);
 
-			}, oldJob, this);
+			// Try to schedule in either one of the required threads, in case it's not possible throw error
+			if (!worker.IsRunning())
+				worker.Start();
 
-		// Try to schedule in either one of the required threads, in case it's not possible throw error
-		if (!_workers[0].IsRunning())
-			_workers[0].Start();
-
-		if (_workers[0].GiveJob(retryReschedulingJob, JobPriority::High))
-			return;
-
-		if (!_workers[1].IsRunning())
-			_workers[1].Start();
-
-		if (_workers[1].GiveJob(retryReschedulingJob, JobPriority::High))
-			return;
+			worker.ScheduleJob(id);
+			if (worker.GiveJob(oldJob, JobPriority::High)) {
+				oldWorker.UnScheduleJob(id);
+				return;
+			}
+			worker.UnScheduleJob(id);
+		}
 
 		const char* errorMessage = "Jobsystem error, wasn't able to reschedule job due even with previous rescheduling falliure";
 		std::cout << errorMessage;
@@ -706,7 +736,6 @@ namespace JbSystem {
 			JobSystemWorker& worker = _workers.at(i);
 			Job* job = worker.TryTakeJob();
 			while (job != nullptr) {
-				worker.UnScheduleJob(job->GetId());
 				jobs->emplace_back(job);
 				job = worker.TryTakeJob();
 			}

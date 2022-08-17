@@ -33,6 +33,7 @@ namespace JbSystem {
 
 		Job* TryTakeJob(const JobPriority& maxTimeInvestment = JobPriority::High);
 		void UnScheduleJob(const JobId& previouslyScheduledJob);
+		void ScheduleJob(const JobId& jobId);
 
 		/// <summary>
 		/// Give a job to the worker thread
@@ -81,8 +82,8 @@ namespace JbSystem {
 		mutex _isRunningMutex;
 		std::thread _worker;
 
-		mutex _busyLock;
-		std::atomic<Job*> _busyJob;
+		mutex _incomingWorkLock;
+		std::atomic<bool> _isBusy;
 
 	};
 }

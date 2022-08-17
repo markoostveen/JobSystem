@@ -14,58 +14,77 @@ void JobSystemWorker::ThreadLoop() {
 
 	int noWork = 0;
 
-	try {
+	while (true) {
 
-		while (true) {
 
-			_busyLock.lock();
-			Job* job = TryTakeJob();
+		_incomingWorkLock.lock();
 
-			if (job == nullptr) {
-				job = _jobsystem->TakeJobFromWorker(JobPriority::Low);
-			}
-
-			_busyJob.store(job);
-			_busyLock.unlock();
-
-			if (job != nullptr) {
-				job->Run();
-				FinishJob(job);
-				_busyJob.store(nullptr);
-				noWork = 0;
-				continue;
-			}
-
-			noWork++;
-
-			if (_shutdownRequested.load())
-				break;
-
-			if (noWork > 500000) {
-
-				// Check if other works are active
-				bool otherWorkersActive = false;
-				for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
-				{
-					JobSystemWorker& worker = _jobsystem->_workers[i];
-					if (worker.IsRunning() && this != &worker) {
-						otherWorkersActive = true;
-						continue;
-					}
-				}
-
-				// Do not shutdown in case there are no other workers
-				if (otherWorkersActive || !_jobsystem->Active) {
-					break;
-				}
-
-				std::this_thread::yield();
-			}
+		// In case shutdown of shutdown of jobsystem
+		if (_shutdownRequested.load()) {
+			_incomingWorkLock.unlock();
+			break;
 		}
-	}
-	catch (std::exception& e) {
-		assert(false);
-		throw e;
+
+		Job* job = TryTakeJob();
+		_isBusy.store(job != nullptr);
+
+		_incomingWorkLock.unlock();
+
+
+		if (job != nullptr) {
+			job->Run();
+			FinishJob(job);
+			_isBusy.store(false);
+			noWork = 0;
+			continue;
+		}
+
+		_incomingWorkLock.lock();
+
+		// Take a possible job from a random worker
+		JobSystemWorker& worker = _jobsystem->_workers[_jobsystem->GetRandomWorker()];
+		job = _jobsystem->TakeJobFromWorker(worker, JobPriority::Low);
+
+		// In case shutdown of shutdown of jobsystem
+		if (_shutdownRequested.load()) {
+			_incomingWorkLock.unlock();
+			break;
+		}
+
+		_isBusy.store(job != nullptr);
+
+		_incomingWorkLock.unlock();
+
+		if (job != nullptr)
+		{
+			job->Run();
+			worker.FinishJob(job);
+			_isBusy.store(false);
+		}
+
+		noWork++;
+
+
+		if (noWork > 500000) {
+
+			// Check if other works are active
+			bool otherWorkersActive = false;
+			for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
+			{
+				JobSystemWorker& worker = _jobsystem->_workers[i];
+				if (worker.IsRunning() && this != &worker) {
+					otherWorkersActive = true;
+					continue;
+				}
+			}
+
+			// Do not shutdown in case there are no other workers
+			if (otherWorkersActive || !_jobsystem->Active) {
+				break;
+			}
+
+			std::this_thread::yield();
+		}
 	}
 
 	Active.store(false);
@@ -79,9 +98,9 @@ void JbSystem::JobSystemWorker::RequestShutdown()
 
 bool JbSystem::JobSystemWorker::Busy()
 {
-	_busyLock.lock();
-	bool result = _busyJob.load() != nullptr;
-	_busyLock.unlock();
+	_incomingWorkLock.lock();
+	bool result = _isBusy.load();
+	_incomingWorkLock.unlock();
 	return result;
 }
 
@@ -90,7 +109,7 @@ JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
 	_modifyingThread(), _highPriorityTaskQueue(), _normalPriorityTaskQueue(), _lowPriorityTaskQueue(),
 	_completedJobsMutex(), _completedJobs(), _scheduledJobsMutex(), _scheduledJobs(),
 	_isRunningMutex(), _worker(),
-	_busyLock(), _busyJob()
+	_incomingWorkLock(), _isBusy(false)
 {
 }
 
@@ -146,8 +165,7 @@ int JbSystem::JobSystemWorker::WorkerId()
 
 Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 {
-	bool locked = _modifyingThread.try_lock();
-	if (!locked)
+	if (!_modifyingThread.try_lock())
 		return nullptr;
 
 	if (maxTimeInvestment >= JobPriority::High) {
@@ -185,8 +203,16 @@ void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJo
 {
 	const int& id = previouslyScheduledJob.ID();
 	_scheduledJobsMutex.lock();
-	if(_scheduledJobs.contains(id))
-		_scheduledJobs.erase(id);
+	_scheduledJobs.erase(id);
+	_scheduledJobsMutex.unlock();
+}
+
+void JbSystem::JobSystemWorker::ScheduleJob(const JobId& jobId)
+{
+	const int& id = jobId.ID();
+
+	_scheduledJobsMutex.lock();
+	_scheduledJobs.emplace(id);
 	_scheduledJobsMutex.unlock();
 }
 
@@ -196,11 +222,8 @@ bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority pr
 		return false;
 	}
 
-	const JobId& jobId = newJob->GetId();
-
-	_scheduledJobsMutex.lock();
-	_scheduledJobs.emplace(jobId.ID());
-	_scheduledJobsMutex.unlock();
+	if (!IsJobScheduled(newJob->GetId())) // All jobs being given should previously been scheduled
+		return false;
 
 	_modifyingThread.lock();
 
@@ -242,12 +265,13 @@ void JbSystem::JobSystemWorker::GiveFutureJobs(const std::vector<Job*>& newjobs,
 
 void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
-	const JobId jobId = job->GetId();
+	const JobId& jobId = job->GetId();
 	const int& id = jobId.ID();
 	_completedJobsMutex.lock();
 	_completedJobs.emplace(id);
 	_completedJobsMutex.unlock();
-	UnScheduleJob(jobId);
+	if(IsJobScheduled(jobId))
+		UnScheduleJob(jobId);
 	job->Free();
 }
 
