@@ -704,11 +704,12 @@ namespace JbSystem {
 		for (int i = 0; i < _workerCount; i++)
 		{
 			JobSystemWorker& worker = _workers.at(i);
-			Job* job = nullptr;
-			do {
+			Job* job = worker.TryTakeJob();
+			while (job != nullptr) {
+				worker.UnScheduleJob(job->GetId());
+				jobs->emplace_back(job);
 				job = worker.TryTakeJob();
-				jobs->emplace_back(const_cast<Job*>(job)); // Take ownership again
-			} while (job != nullptr);
+			}
 		}
 		return jobs;
 	}

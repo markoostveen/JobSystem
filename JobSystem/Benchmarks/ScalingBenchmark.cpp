@@ -10,11 +10,16 @@ using namespace JbSystem;
 
 void CopyArrayValues(const int& index) {
 
-	std::array<int, 15> test;
-	for (size_t i = 0; i < 15; i++)
+	std::vector<int> test;
+	test.reserve(1500);
+	for (size_t i = 0; i < 1500; i++)
 	{
-		test.at(i) = (index + 1) * 12;
-		test.at(i) += index / test.at(i);
+		int number = index;
+		if (number == 0)
+			number++;
+
+		test.emplace_back((number + 1) * 12);
+		test.at(i) += number / test.at(i) * index;
 	}
 }
 #pragma endregion
@@ -63,38 +68,36 @@ long long RunBenchmark() {
 	return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 }
 
-constexpr int testRange = 4;
+constexpr int testRange = 35;
+constexpr int startRange = 20;
 constexpr int repeatBenchmarkTimes = 20;
 int main() {
+	int threadCount;
+	long long time = 0;
+	for (int i = startRange; i < testRange; i++)
 	{
-		int threadCount;
-		long long time = 0;
-		for (int i = 2; i < testRange; i++)
+		threadCount = (i * 2) - 1;
+		JobSystem::GetInstance()->ReConfigure(threadCount - 1);
+		time = 0;
+		for (int i = 0; i < repeatBenchmarkTimes; i++)
 		{
-			threadCount = (i * 2) - 1;
-			JobSystem::GetInstance()->ReConfigure(threadCount - 1);
-			time = 0;
-			for (int i = 0; i < repeatBenchmarkTimes; i++)
-			{
-				time += RunBenchmark();
-			}
-
-			std::cout << threadCount << " worker threads took " << time / repeatBenchmarkTimes << "us" << std::endl;
+			time += RunBenchmark();
 		}
 
-		//for (int i = testRange; i > 1; i--)
-		//{
-		//	threadCount = (i * 2) - 1;
-		//	JobSystem::GetInstance()->ReConfigure(threadCount - 1);
-		//	time = 0;
-		//	for (int i = 0; i < repeatBenchmarkTimes; i++)
-		//	{
-		//		time += RunBenchmark();
-		//	}
+		std::cout << threadCount << " worker threads took " << time / repeatBenchmarkTimes << "us" << std::endl;
+	}
 
-		//	std::cout << threadCount << " worker threads took " << time / repeatBenchmarkTimes << "us" << std::endl;
-		//}
-		delete JobSystem::GetInstance();
+	for (int i = testRange; i >= startRange; i--)
+	{
+		threadCount = (i * 2) - 1;
+		JobSystem::GetInstance()->ReConfigure(threadCount - 1);
+		time = 0;
+		for (int i = 0; i < repeatBenchmarkTimes; i++)
+		{
+			time += RunBenchmark();
+		}
+
+		std::cout << threadCount << " worker threads took " << time / repeatBenchmarkTimes << "us" << std::endl;
 	}
 	return 0;
 }
