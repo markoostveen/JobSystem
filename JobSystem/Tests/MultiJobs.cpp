@@ -9,7 +9,7 @@
 
 using namespace JbSystem;
 
-const JobId& StartJobs() {
+JobId StartJobs() {
 	auto jobSystem = JbSystem::JobSystem::GetInstance();
 
 	constexpr int totalJobSize = 5000;
@@ -48,7 +48,7 @@ const JobId& StartJobs() {
 		jobIds2.emplace_back(jobSystem->Schedule(job, JobPriority::High, jobIds[i]));
 	}
 
-	const JobId& controlJobId = jobSystem->Schedule(jobSystem->CreateJob([]() {}), JobPriority::Low, jobIds2);
+	JobId controlJobId = jobSystem->Schedule(jobSystem->CreateJob([]() {}), JobPriority::Low, jobIds2);
 	return controlJobId;
 }
 
