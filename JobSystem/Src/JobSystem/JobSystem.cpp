@@ -463,36 +463,54 @@ namespace JbSystem {
 		return false;
 	}
 
-	bool JobSystem::WaitForJobCompletion(const JobId& jobId, JobPriority maximumHelpEffort)
+	void JobSystem::WaitForJobCompletion(const JobId& jobId, JobPriority maximumHelpEffort)
 	{
 		assert(!JobInStack(jobId));  //Job inside workers stack, deadlock encountered!
 
-		bool jobFinished = IsJobCompleted(jobId);
 
-		int waitIteration = 0;
+		struct FinishedTag {};
+		void* location = boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::malloc();
 
+		// Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
+		std::atomic<bool>* finished = new(location) std::atomic<bool>(false);
+		auto waitLambda = [](std::atomic<bool>* finished)
+		{
+			finished->store(true);
+		};
+
+		WaitForJobCompletion({ jobId }, waitLambda, finished);
+		int waitingPeriod = 0;
 		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
-		while (!jobFinished) {
-			ExecuteJob(maximumHelpEffort);// use resources to aid workers instead of sleeping
+		while (!finished->load()) {
+			ExecuteJob(maximumHelpEffort);
+			waitingPeriod++;
 
-			jobFinished = IsJobCompleted(jobId);
+			if (waitingPeriod > 500) {
 
-			waitIteration++;
-
-			// prevent deadlocks in case all workers are waiting on jobs with lower priority
-			if (waitIteration > 20) {
-				if (maximumHelpEffort == JobPriority::High)
+				switch (maximumHelpEffort)
+				{
+				case JbSystem::JobPriority::None:
+					break;
+				case JbSystem::JobPriority::High:
 					maximumHelpEffort = JobPriority::Normal;
-				else if (maximumHelpEffort == JobPriority::Normal)
+					break;
+				case JbSystem::JobPriority::Normal:
 					maximumHelpEffort = JobPriority::Low;
-				else {
-					OptimizePerformance();
+					break;
+				case JbSystem::JobPriority::Low:
+					break;
+				default:
+					assert(false);
+					break;
 				}
+
+				waitingPeriod = 0;
+				RescheduleWorkerJobsFromInActiveWorkers();
 			}
 		}
-		threadDepth++;
 
-		return jobFinished;
+		boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::free(finished);
+		threadDepth++;
 	}
 
 	bool JobSystem::WaitForJobCompletion(const JobId& jobId, int maxMicroSecondsToWait, const JobPriority maximumHelpEffort)
@@ -524,44 +542,20 @@ namespace JbSystem {
 
 	void JobSystem::WaitForJobCompletion(const std::vector<JobId>& jobIds, JobPriority maximumHelpEffort)
 	{
-		for (int i = 0; i < jobIds.size(); i++)
-		{
-			assert(!JobInStack(jobIds.at(i))); // Jobs we are waiting for were not given as dependencies and running on the calling thread!
+		for (JobId id : jobIds) {
+			WaitForJobCompletion(id, maximumHelpEffort);
 		}
-
-		struct FinishedTag {};
-		void* location = boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::malloc();
-
-		// Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
-		std::atomic<bool>* finished = new(location) std::atomic<bool>(false);
-		auto waitLambda = [](std::atomic<bool>* finished)
-		{
-			finished->store(true);
-		};
-
-		WaitForJobCompletion(jobIds, waitLambda, finished);
-		int waitingPeriod = 0;
-		while (!finished->load()) {
-			ExecuteJob(maximumHelpEffort);
-			waitingPeriod++;
-
-			if (waitingPeriod > 500)
-				RescheduleWorkerJobsFromInActiveWorkers();
-		}
-
-		boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::free(finished);
 	}
 
 	Job* JobSystem::TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment)
 	{
 		Job* job = worker.TryTakeJob(maxTimeInvestment);
 		if (job == nullptr) // Was not able to take a job from specific worker
-			return job;
+			return nullptr;
 		
 
 		if (JobInStack(job->GetId())) { // future deadlock encountered, do not execute this job! (Try give it back, in case that isn't possible reschedule)
-			if (!worker.GiveJob(job, JobPriority::High))
-				SafeRescheduleJob(job, worker);
+			SafeRescheduleJob(job, worker);
 
 			return nullptr;
 		}
@@ -648,7 +642,6 @@ namespace JbSystem {
 
 	bool JobSystem::RescheduleWorkerJobs(JobSystemWorker& worker)
 	{
-		constexpr int defaultWorker = 0;
 		Job* job = worker.TryTakeJob(JobPriority::Low);
 		while (job != nullptr) {
 			worker.UnScheduleJob(job->GetId());

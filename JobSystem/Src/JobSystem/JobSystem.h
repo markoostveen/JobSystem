@@ -106,7 +106,7 @@ namespace JbSystem {
 		/// <param name="jobId"></param>
 		/// <param name="maxMicroSecondsToWait">when elapsed function will return false if job hasn't been completed yet, 0 = infinity</param>
 		/// <returns>weather or not the job was completed in time</returns>
-		bool WaitForJobCompletion(const JobId& jobId, JobPriority maximumHelpEffort = JobPriority::Low);
+		void WaitForJobCompletion(const JobId& jobId, JobPriority maximumHelpEffort = JobPriority::Low);
 
 		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed

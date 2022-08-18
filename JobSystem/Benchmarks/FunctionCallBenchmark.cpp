@@ -9,7 +9,12 @@ using namespace JbSystem;
 constexpr int totalIterations = 1000;
 constexpr int repeatBeforeValid = 10;
 
-inline void TestCall() {
+void TestCall() {
+	//volatile int x = 0;
+	//for (size_t i = 0; i < 1000; i++)
+	//{
+	//	x += i;
+	//}
 }
 
 double CallDirect() {
@@ -58,7 +63,7 @@ double CallJobHeapWorker() {
 	{
 		Job* job = JobSystem::CreateJob(TestCall);
 		JobSystem* jobsystem = JobSystem::GetInstance();
-		JobId id = jobsystem->Schedule(job, JobPriority::Low);
+		JobId id = jobsystem->Schedule(job, JobPriority::High);
 		jobsystem->WaitForJobCompletion(id, JobPriority::High);
 	}
 
@@ -74,7 +79,7 @@ double CallMultiJobHeapWorker() {
 		});
 
 	JobSystem* jobsystem = JobSystem::GetInstance();
-	auto id = jobsystem->Schedule(job, JobPriority::High);
+	auto id = jobsystem->Schedule(job, JobPriority::Normal);
 	jobsystem->WaitForJobCompletion(id, JobPriority::Low);
 
 	std::chrono::time_point end = std::chrono::high_resolution_clock::now();
@@ -82,6 +87,7 @@ double CallMultiJobHeapWorker() {
 }
 
 int runIndex = 0;
+JbSystem::mutex printMutex;
 
 void SimpleCallBenchmark() {
 	auto totalTimeDirect = std::make_shared<double>();
@@ -92,40 +98,59 @@ void SimpleCallBenchmark() {
 	auto mutex = std::make_shared<JbSystem::mutex>();
 
 
-	auto job = JobSystem::CreateParallelJob(0, std::thread::hardware_concurrency() - 1, 1, [](const int& index, auto mutex, auto totalTimeDirect, auto totalTimeJob, auto totalTimeJobHeap, auto totalTimeJobHeapWorker, auto totalTimeJobHeapWorkerMulti) {
-			for (size_t i = 0; i < repeatBeforeValid; i++)
-			{
-				double time = 0;
+	auto job = JobSystem::CreateParallelJob(0, 32, 1, [](const int& index, auto mutex, auto totalTimeDirect, auto totalTimeJob, auto totalTimeJobHeap, auto totalTimeJobHeapWorker, auto totalTimeJobHeapWorkerMulti) {
+			
+		printMutex.lock();
+		std::cout << index;
+		printMutex.unlock();
+
+		double time = 0;
+		for (size_t i = 0; i < repeatBeforeValid; i++)
+		{
 				time = CallDirect();
 				mutex->lock();
 				*totalTimeDirect += time;
 				mutex->unlock();
+		}
+		for (size_t i = 0; i < repeatBeforeValid; i++)
+		{
+			time = CallJobStack();
+			mutex->lock();
+			*totalTimeJob += time;
+			mutex->unlock();
+		}
 
-				time = CallJobStack();
-				mutex->lock();
-				*totalTimeJob += time;
-				mutex->unlock();
+		for (size_t i = 0; i < repeatBeforeValid; i++)
+		{
+			time = CallJobHeap();
+			mutex->lock();
+			*totalTimeJobHeap += time;
+			mutex->unlock();
+		}
 
-				time = CallJobHeap();
-				mutex->lock();
-				*totalTimeJobHeap += time;
-				mutex->unlock();
+		for (size_t i = 0; i < repeatBeforeValid; i++)
+		{
+			time = CallJobHeapWorker();
+			mutex->lock();
+			*totalTimeJobHeapWorker += time;
+			mutex->unlock();
+		}
 
-				time = CallJobHeapWorker();
-				mutex->lock();
-				*totalTimeJobHeapWorker += time;
-				mutex->unlock();
+		for (size_t i = 0; i < repeatBeforeValid; i++)
+		{
+			time = CallMultiJobHeapWorker();
+			mutex->lock();
+			*totalTimeJobHeapWorkerMulti += time;
+			mutex->unlock();
+		}
 
-				time = CallMultiJobHeapWorker();
-				mutex->lock();
-				*totalTimeJobHeapWorkerMulti += time;
-				mutex->unlock();
+		printMutex.lock();
+		std::cout << index;
+		printMutex.unlock();
 
-				std::cout << i;
-			}
-		}, mutex, totalTimeDirect, totalTimeJob, totalTimeJobHeap, totalTimeJobHeapWorker, totalTimeJobHeapWorkerMulti);
+	}, mutex, totalTimeDirect, totalTimeJob, totalTimeJobHeap, totalTimeJobHeapWorker, totalTimeJobHeapWorkerMulti);
 	auto jobSystem = JobSystem::GetInstance();
-	auto jobId = jobSystem->Schedule(job, JobPriority::Normal);
+	auto jobId = jobSystem->Schedule(job, JobPriority::Low);
 	jobSystem->WaitForJobCompletion(jobId);
 
 	double directAverageTime = *totalTimeDirect / repeatBeforeValid / 1000;
@@ -134,6 +159,7 @@ void SimpleCallBenchmark() {
 	double workerAverageTime = *totalTimeJobHeapWorker / repeatBeforeValid / 1000;
 	double multiWorkerAverageTime = *totalTimeJobHeapWorkerMulti / repeatBeforeValid / 1000;
 
+	printMutex.lock();
 	std::cout << "\n Run #" << runIndex << std::endl;
 	runIndex++;
 
@@ -153,6 +179,7 @@ void SimpleCallBenchmark() {
 	std::cout << "direct calls vs Worker average difference per call " << (workerAverageTime - directAverageTime) / totalIterations << "us " << workerAverageTime / directAverageTime << " times slower" << std::endl;
 	std::cout << "direct calls vs multiple Worker average difference per call " << (multiWorkerAverageTime - directAverageTime) / totalIterations << "us " << multiWorkerAverageTime / directAverageTime << " times slower" << std::endl;
 	std::cout << "=======" << std::endl;
+	printMutex.unlock();
 }
 
 int main() {
@@ -162,7 +189,40 @@ int main() {
 		});
 
 	auto jobSystem = JobSystem::GetInstance();
+	//jobSystem->ReConfigure(5);
+	std::cout << "\rRun Started! Please wait for results\n";
 	auto id = jobSystem->Schedule(job, JobPriority::Low);
 	jobSystem->WaitForJobCompletion(id);
+
+	job = JobSystem::CreateParallelJob(0, 10, 1, [](const int& testIndex) {
+		SimpleCallBenchmark();
+		});
+
+	std::cout << "\rTest step complete, scaling jobsystem up and down\n";
+
+	jobSystem = JobSystem::GetInstance();
+	jobSystem->ReConfigure(5);
+	id = jobSystem->Schedule(job, JobPriority::Low);
+
+
+	int workers = 2;
+	bool up = true;
+	for (auto jobId : id)
+	{
+		while (!jobSystem->WaitForJobCompletion(jobId, 500)) {
+
+			if (workers == std::thread::hardware_concurrency())
+				up = false;
+			else if (workers == 2)
+				up = true;
+
+			if (up)
+				workers++;
+			else
+				workers--;
+
+			//jobSystem->ReConfigure(workers);
+		}
+	}
 	return 0;
 }

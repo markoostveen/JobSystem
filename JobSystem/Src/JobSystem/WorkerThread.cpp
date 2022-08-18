@@ -57,6 +57,7 @@ void JobSystemWorker::ThreadLoop() {
 
 		if (job != nullptr)
 		{
+			assert(worker.IsJobScheduled(job->GetId()));
 			job->Run();
 			worker.FinishJob(job);
 			_isBusy.store(false);
@@ -168,11 +169,13 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 	if (!_modifyingThread.try_lock())
 		return nullptr;
 
+
 	if (maxTimeInvestment >= JobPriority::High) {
 		if (!_highPriorityTaskQueue.empty()) {
 			Job* value = _highPriorityTaskQueue.front();
 			_highPriorityTaskQueue.pop();
 			_modifyingThread.unlock();
+			assert(IsJobScheduled(value->GetId()));
 			return value;
 		}
 	}
@@ -182,6 +185,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 			Job* value = _normalPriorityTaskQueue.front();
 			_normalPriorityTaskQueue.pop();
 			_modifyingThread.unlock();
+			assert(IsJobScheduled(value->GetId()));
 			return value;
 		}
 	}
@@ -191,6 +195,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 			Job* value = _lowPriorityTaskQueue.front();
 			_lowPriorityTaskQueue.pop();
 			_modifyingThread.unlock();
+			assert(IsJobScheduled(value->GetId()));
 			return value;
 		}
 	}
@@ -203,6 +208,7 @@ void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJo
 {
 	const int& id = previouslyScheduledJob.ID();
 	_scheduledJobsMutex.lock();
+	assert(_scheduledJobs.contains(id));
 	_scheduledJobs.erase(id);
 	_scheduledJobsMutex.unlock();
 }
@@ -212,6 +218,7 @@ void JbSystem::JobSystemWorker::ScheduleJob(const JobId& jobId)
 	const int& id = jobId.ID();
 
 	_scheduledJobsMutex.lock();
+	assert(!_scheduledJobs.contains(id));
 	_scheduledJobs.emplace(id);
 	_scheduledJobsMutex.unlock();
 }
@@ -221,9 +228,6 @@ bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority pr
 	if (!IsRunning()) {
 		return false;
 	}
-
-	if (!IsJobScheduled(newJob->GetId())) // All jobs being given should previously been scheduled
-		return false;
 
 	_modifyingThread.lock();
 
@@ -270,8 +274,8 @@ void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 	_completedJobsMutex.lock();
 	_completedJobs.emplace(id);
 	_completedJobsMutex.unlock();
-	if(IsJobScheduled(jobId))
-		UnScheduleJob(jobId);
+	assert(IsJobScheduled(jobId));
+	UnScheduleJob(jobId);
 	job->Free();
 }
 
