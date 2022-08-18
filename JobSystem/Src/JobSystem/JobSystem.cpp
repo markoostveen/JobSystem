@@ -577,7 +577,7 @@ namespace JbSystem {
 		if (!_optimizePerformance.try_lock())
 			return;
 
-		int votedWorkers = _activeWorkerCount.load();
+		int votedWorkers = _workerCount;
 
 		int totalJobs = 0;
 		for (int i = 0; i < _workerCount; i++)
@@ -596,12 +596,12 @@ namespace JbSystem {
 		double averageJobsPerWorker = double(totalJobs) / double(votedWorkers);
 
 
-		if (averageJobsPerWorker > 4 && _activeWorkerCount == _workerCount)
+		if (averageJobsPerWorker > 1 && _activeWorkerCount == _workerCount)
 			_preventIncomingScheduleCalls.store(true);
 		else
 			_preventIncomingScheduleCalls.store(false);
 
-		if (averageJobsPerWorker > 2) {
+		if (averageJobsPerWorker > 1) {
 			if(_activeWorkerCount < _workerCount)
 				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
 			//std::cout << "Growing active workers\n";
@@ -611,8 +611,6 @@ namespace JbSystem {
 			//std::cout << "Shrinking active workers\n";
 		}
 
-		//std::cout << std::format("\33[2K \r JobSystem Workers: {}, Accepting new jobs: {}, total Jobs: {}", _activeWorkerCount.load(), int(!_preventIncomingScheduleCalls.load()), totalJobs);
-		//std::cout << std::format("\r Average Jobs: {}", averageJobsPerWorker);
 
 		// Start workers that aren't active
 		for (int i = 0; i < votedWorkers; i++)
@@ -623,6 +621,8 @@ namespace JbSystem {
 				worker.Start();
 		}
 
+		std::cout << std::format("\33[2K \r JobSystem Workers: {}, Accepting new jobs: {}, total Jobs: {}", votedWorkers, int(!_preventIncomingScheduleCalls.load()), totalJobs);
+		//std::cout << std::format("\r Average Jobs: {}", averageJobsPerWorker);
 
 		// In case worker 0 or 1 has stopped make sure to restart it
 		if (!_workers.at(0).IsRunning())
