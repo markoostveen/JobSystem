@@ -7,6 +7,8 @@
 #include "boost/container/small_vector.hpp"
 #include <boost/range/adaptor/reversed.hpp>
 
+#include <format>
+
 namespace JbSystem {
 	const int MaxThreadDepth = 20;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
@@ -158,7 +160,6 @@ namespace JbSystem {
 
 		_activeWorkerCount.store(0);
 		_workers.clear();
-		_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
 		return allJobs;
 	}
 
@@ -228,19 +229,6 @@ namespace JbSystem {
 		JobId jobId = newjob->GetId();
 
 		Schedule(GetRandomWorker(), newjob, priority);
-
-		// Make sure that all workers are still running correctly
-		_schedulesTillMaintainance--;
-		if (_schedulesTillMaintainance < 0) {
-			//std::cout << "Validating Jobsystem threads" << std::endl;
-			_schedulesTillMaintainance = _maxSchedulesTillMaintainance * _activeWorkerCount;
-			
-			StartAllWorkers();
-
-			Cleanup();
-
-		}
-
 		return jobId;
 	}
 
@@ -336,16 +324,6 @@ namespace JbSystem {
 		{
 			Job* const& newJob = newjobs.at(i);
 			Schedule(workerIds.at(i), newJob, priority);
-
-			// Make sure that all workers are still running correctly
-			_schedulesTillMaintainance--;
-		}
-
-		if (_schedulesTillMaintainance <= 0) {
-			//std::cout << "Validating Jobsystem threads" << std::endl;
-			_schedulesTillMaintainance = _maxSchedulesTillMaintainance;
-
-			Cleanup();
 		}
 
 		std::vector<JobId> jobIds;
@@ -438,26 +416,26 @@ namespace JbSystem {
 
 	bool JobSystem::IsJobCompleted(const JobId& jobId)
 	{
-		for (int i = 0; i < _workerCount; i++)
-		{
-			// check if a worker has finished the job
-			if (_workers.at(i).IsJobFinished(jobId))
-				return true;
-
-			if (_workers.at(i).IsJobScheduled(jobId))
-				return false;
-		}
-		return true;
+		JobSystemWorker* suggestedWorker = nullptr;
+		return IsJobCompleted(jobId, suggestedWorker);
 	}
 
-	bool JobSystem::IsJobScheduled(const JobId& jobId)
+	bool JobSystem::IsJobCompleted(const JobId& jobId, JobSystemWorker*& jobWorker)
 	{
-		for (int i = 0; i < _workerCount; i++)
-		{
-			if (_workers.at(i).IsJobScheduled(jobId))
-				return true;
+		// Try check suggested worker first
+		if (jobWorker != nullptr) {
+			if (jobWorker->IsJobScheduled(jobId))
+				return false;
 		}
-		return false;
+
+		for(JobSystemWorker& currentWorker : _workers)
+		{
+			if (currentWorker.IsJobScheduled(jobId)) {
+				jobWorker = &currentWorker;
+				return false;
+			}
+		}
+		return true;
 	}
 
 	void JobSystem::WaitForJobCompletion(const JobId& jobId, JobPriority maximumHelpEffort)
@@ -560,18 +538,6 @@ namespace JbSystem {
 		return job;
 	}
 
-	void JobSystem::Cleanup()
-	{
-		//remove deleted jobs
-		for (int i = 0; i < _workerCount; i++)
-		{
-			JobSystemWorker& worker = _workers[i];
-			worker._completedJobsMutex.lock();
-			worker._completedJobs.clear();
-			worker._completedJobsMutex.unlock();
-		}
-	}
-
 	void JobSystem::OptimizePerformance()
 	{
 		if (!_optimizePerformance.try_lock())
@@ -596,24 +562,22 @@ namespace JbSystem {
 		double averageJobsPerWorker = double(totalJobs) / double(votedWorkers);
 
 
-		if (averageJobsPerWorker > 1 && _activeWorkerCount == _workerCount)
+		if (averageJobsPerWorker > 1.5 && _activeWorkerCount.load() == _workerCount)
 			_preventIncomingScheduleCalls.store(true);
 		else
 			_preventIncomingScheduleCalls.store(false);
 
-		if (averageJobsPerWorker > 1) {
+		if (averageJobsPerWorker > 1.0) {
 			if(_activeWorkerCount < _workerCount)
 				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
-			//std::cout << "Growing active workers\n";
 		}
 		else if (_activeWorkerCount > 2) {
 			_activeWorkerCount.store(_activeWorkerCount.load() - 1);
-			//std::cout << "Shrinking active workers\n";
 		}
 
 
 		// Start workers that aren't active
-		for (int i = 0; i < votedWorkers; i++)
+		for (int i = 0; i < _activeWorkerCount.load(); i++)
 		{
 			JobSystemWorker& worker = _workers.at(i);
 
@@ -621,7 +585,7 @@ namespace JbSystem {
 				worker.Start();
 		}
 
-		std::cout << std::format("\33[2K \r JobSystem Workers: {}, Accepting new jobs: {}, total Jobs: {}", votedWorkers, int(!_preventIncomingScheduleCalls.load()), totalJobs);
+		std::cout << std::format("\33[2K \r JobSystem Workers: {}, Accepting new jobs: {}, total Jobs: {}\r", votedWorkers, int(!_preventIncomingScheduleCalls.load()), totalJobs);
 		//std::cout << std::format("\r Average Jobs: {}", averageJobsPerWorker);
 
 		// In case worker 0 or 1 has stopped make sure to restart it

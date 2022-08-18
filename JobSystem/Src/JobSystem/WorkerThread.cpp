@@ -106,7 +106,7 @@ bool JbSystem::JobSystemWorker::Busy()
 JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
 	: _jobsystem(jobsystem), Active(false), _shutdownRequested(false),
 	_modifyingThread(), _highPriorityTaskQueue(), _normalPriorityTaskQueue(), _lowPriorityTaskQueue(),
-	_completedJobsMutex(), _completedJobs(), _scheduledJobsMutex(), _scheduledJobs(),
+	_scheduledJobsMutex(), _scheduledJobs(),
 	_isRunningMutex(), _worker(),
 	_incomingWorkLock(), _isBusy(false)
 {
@@ -270,9 +270,6 @@ void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
 	const JobId& jobId = job->GetId();
 	const int& id = jobId.ID();
-	_completedJobsMutex.lock();
-	_completedJobs.emplace(id);
-	_completedJobsMutex.unlock();
 	assert(IsJobScheduled(jobId));
 	UnScheduleJob(jobId);
 	job->Free();
@@ -283,15 +280,5 @@ bool JbSystem::JobSystemWorker::IsJobScheduled(const JobId& jobId)
 	_scheduledJobsMutex.lock();
 	bool contains = _scheduledJobs.contains(jobId.ID());
 	_scheduledJobsMutex.unlock();
-	return contains;
-}
-
-bool JbSystem::JobSystemWorker::IsJobFinished(const JobId& jobId)
-{
-	bool contains = false;
-	_completedJobsMutex.lock();
-	if (!_completedJobs.empty())
-		contains = _completedJobs.contains(jobId.ID());
-	_completedJobsMutex.unlock();
 	return contains;
 }

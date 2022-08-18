@@ -94,13 +94,6 @@ namespace JbSystem {
 		bool IsJobCompleted(const JobId& jobId);
 
 		/// <summary>
-		/// 
-		/// </summary>
-		/// <param name="jobId"></param>
-		/// <returns>weather or not job is currently scheduled and isn't executed</returns>
-		bool IsJobScheduled(const JobId& jobId);
-
-		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed
 		/// </summary>
 		/// <param name="jobId"></param>
@@ -165,6 +158,9 @@ namespace JbSystem {
 
 		Job* TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment = JobPriority::Low);
 
+
+		bool IsJobCompleted(const JobId& jobId, JobSystemWorker*& jobWorker);
+
 		void Cleanup();
 
 		void OptimizePerformance();
@@ -204,12 +200,6 @@ namespace JbSystem {
 		std::atomic<int> _jobExecutionsTillOptimization = _maxJobExecutionsBeforePerformanceOptimization;
 
 		std::atomic<bool> _preventIncomingScheduleCalls;
-
-		const int _maxSchedulesTillMaintainance = 20;
-		std::atomic<int> _schedulesTillMaintainance = _maxSchedulesTillMaintainance;
-
-		
-
 	};
 
 	template<class ...Args>
@@ -319,25 +309,25 @@ namespace JbSystem {
 	{
 		struct DependenciesTag {};
 
-		auto rescheduleJob = [](auto& rescheduleCallback, auto& retryCallback, Job*& callback, JobSystem*& jobSystem, std::vector<JobId>*& dependencies) {
+		auto rescheduleJob = [](auto& rescheduleCallback, auto& retryCallback, Job*& callback, JobSystem*& jobSystem, std::vector<JobId>*& dependencies, JobSystemWorker*& suggestedWorker) {
 
 			// Prerequsites not met, queueing async job to check back later
 			Job* rescheduleJob = JobSystem::CreateJobWithParams(retryCallback, rescheduleCallback, retryCallback,
-				callback, jobSystem, dependencies);
+				callback, jobSystem, dependencies, suggestedWorker);
 
 
 			jobSystem->RescheduleWorkerJobsFromInActiveWorkers();
 			jobSystem->Schedule(rescheduleJob, JobPriority::Low);
 		};
 
-		auto jobScheduler = [](auto rescheduleCallback, auto retryCallback, Job* callback, JobSystem* jobSystem, std::vector<JobId>* dependencies) -> void {
+		auto jobScheduler = [](auto rescheduleCallback, auto retryCallback, Job* callback, JobSystem* jobSystem, std::vector<JobId>* dependencies, JobSystemWorker* suggestedJobWorker) -> void {
 			for (size_t i = 0; i < dependencies->size(); i++) {
-				if (!jobSystem->IsJobCompleted(dependencies->at(i))) {
+				if (!jobSystem->IsJobCompleted(dependencies->at(i), suggestedJobWorker)) {
 					if (i > 0) { // shrink the dependency array to reduce amount of jobs that need to be checked
 						dependencies->erase(dependencies->begin(), dependencies->begin() + i);
 					}
 
-					rescheduleCallback(rescheduleCallback, retryCallback, callback, jobSystem, dependencies);
+					rescheduleCallback(rescheduleCallback, retryCallback, callback, jobSystem, dependencies, suggestedJobWorker);
 					return;
 				}
 			}
@@ -354,6 +344,6 @@ namespace JbSystem {
 		Job* callbackJob = JobSystem::CreateJobWithParams(function, std::forward<Args>(args)...);
 
 		// run in sync, if dependencies have already completed we can immediatly schedule it
-		jobScheduler(rescheduleJob, jobScheduler, callbackJob, this, jobDependencies);
+		jobScheduler(rescheduleJob, jobScheduler, callbackJob, this, jobDependencies, nullptr);
 	}
 }

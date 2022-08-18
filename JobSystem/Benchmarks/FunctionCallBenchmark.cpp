@@ -244,8 +244,7 @@ void JobSystemCallBenchmark() {
 	printMutex.unlock();
 }
 
-int main() {
-
+void Benchmark() {
 	std::cout << "Started normal Runs\n";
 	for (size_t i = 0; i < 10; i++)
 	{
@@ -267,5 +266,14 @@ int main() {
 	{
 		SimpleCallBenchmark();
 	}
+}
+
+int main() {
+
+	for (size_t i = 0; i < 10; i++)
+	{
+		Benchmark();
+	}
+
 	return 0;
 }

@@ -52,8 +52,7 @@ namespace JbSystem {
 		void FinishJob(Job*& job);
 
 		bool IsJobScheduled(const JobId& jobId);
-		bool IsJobFinished(const JobId& jobId);
-		
+
 		void ThreadLoop();
 
 		void RequestShutdown();
@@ -74,8 +73,6 @@ namespace JbSystem {
 		std::queue<Job*> _normalPriorityTaskQueue;
 		std::queue<Job*> _lowPriorityTaskQueue;
 
-		mutex _completedJobsMutex;
-		std::unordered_set<int> _completedJobs;
 		mutex _scheduledJobsMutex;
 		std::unordered_set<int> _scheduledJobs;
 
