@@ -10,7 +10,6 @@
 namespace JbSystem {
 	const int MaxThreadDepth = 20;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
-	static thread_local bool unwind = false; // when true we can't help with any new jobs, instead we finish all our previous jobs
 	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* MaxThreadDepth> jobStack; // stack of all jobs our current thread is executing
 	bool JobInStack(const JobId& JobId) {
 		for (int i = 0; i < jobStack.size(); i++)
@@ -60,6 +59,7 @@ namespace JbSystem {
 		_workerCount = threadCount;
 		_activeWorkerCount.store(_workerCount);
 		_workers.reserve(threadCount);
+		_preventIncomingScheduleCalls.store(false);
 		for (int i = 0; i < _workerCount; i++)
 		{
 			// set callback function for worker threads to call the execute job on the job system
@@ -164,35 +164,34 @@ namespace JbSystem {
 
 	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
 	{
-		if (threadDepth > MaxThreadDepth && !unwind) { // allow a maximum recursion depth of x
-			unwind = true;
-			
+		if (threadDepth > MaxThreadDepth) { // allow a maximum recursion depth of x
 			//Stack was full we might be able to start additional workers
-			OptimizePerformance();
 			StartAllWorkers();
 
 			return;
 		}
 
-		if (unwind && threadDepth > 0) {
-			return;
-		}
-
-		unwind = false;
+		// Try and run a job
 		threadDepth++;
-		{
-			JobSystemWorker& worker = _workers[GetRandomWorker()];
-			Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
+		JobSystemWorker& worker = _workers[GetRandomWorker()];
+		Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
 
-			if (primedJob != nullptr) {
-				jobStack.emplace_back(primedJob);
-				primedJob->Run();
-				auto it = std::find(jobStack.begin(), jobStack.end(), primedJob);
-				jobStack.erase(it);
-				worker.FinishJob(primedJob);
-			}
+		if (primedJob != nullptr) {
+			jobStack.emplace_back(primedJob);
+			primedJob->Run();
+			auto it = std::find(jobStack.begin(), jobStack.end(), primedJob);
+			jobStack.erase(it);
+			worker.FinishJob(primedJob);
 		}
 		threadDepth--;
+
+		// Optimize performance once in a while
+		int remaining = _jobExecutionsTillOptimization.load();
+		_jobExecutionsTillOptimization.store(_jobExecutionsTillOptimization.load() - 1);
+		if (remaining < 1) {
+			_jobExecutionsTillOptimization.store(_maxJobExecutionsBeforePerformanceOptimization);
+			OptimizePerformance();
+		}
 	}
 
 	int JobSystem::GetWorkerCount()
@@ -235,8 +234,6 @@ namespace JbSystem {
 		if (_schedulesTillMaintainance < 0) {
 			//std::cout << "Validating Jobsystem threads" << std::endl;
 			_schedulesTillMaintainance = _maxSchedulesTillMaintainance * _activeWorkerCount;
-
-			OptimizePerformance();
 			
 			StartAllWorkers();
 
@@ -580,50 +577,58 @@ namespace JbSystem {
 		if (!_optimizePerformance.try_lock())
 			return;
 
-		int activeWorkerCount = _activeWorkerCount.load();
-		// Optimize performance, growing worker count or shrinking
-		double favorShrink = 0;
-		double favorGrow = 0;
+		int votedWorkers = _activeWorkerCount.load();
+
+		int totalJobs = 0;
 		for (int i = 0; i < _workerCount; i++)
 		{
 			JobSystemWorker& worker = _workers[i];
-			if (i > _activeWorkerCount - 1) {
-				if(worker.IsRunning())
-					favorShrink -= (activeWorkerCount / _workerCount) * 2; // delay shrink when inactive workers are still running, because this will lead to jobs being unbalanced
+			if (!worker.IsRunning()) {
+				votedWorkers--;
 				continue;
 			}
 
-			if (!worker._modifyingThread.try_lock())
-				continue;
-
-			size_t lowPriority = worker._lowPriorityTaskQueue.size();
-			size_t mediumPriority = worker._normalPriorityTaskQueue.size();
-			size_t highPriority = worker._highPriorityTaskQueue.size();
-			worker._modifyingThread.unlock();
-
-			size_t bias = 1 + (highPriority * 3) + (mediumPriority * 10) + (lowPriority * 15);
-
-			if (bias == 1)
-				favorShrink++;
-
-			if (bias > 10)
-				favorGrow++;
+			worker._scheduledJobsMutex.lock();
+			totalJobs += worker._scheduledJobs.size();
+			worker._scheduledJobsMutex.unlock();
 		}
-		
-		if (favorGrow > activeWorkerCount * 0.4f && activeWorkerCount < _workerCount) {
-			_activeWorkerCount.store(activeWorkerCount + 1);
+
+		double averageJobsPerWorker = double(totalJobs) / double(votedWorkers);
+
+
+		if (averageJobsPerWorker > 4 && _activeWorkerCount == _workerCount)
+			_preventIncomingScheduleCalls.store(true);
+		else
+			_preventIncomingScheduleCalls.store(false);
+
+		if (averageJobsPerWorker > 2) {
+			if(_activeWorkerCount < _workerCount)
+				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
 			//std::cout << "Growing active workers\n";
 		}
-
-
-		if (favorShrink > activeWorkerCount * 0.4f && activeWorkerCount > 1) {
-			_activeWorkerCount.store(activeWorkerCount - 1);
+		else if (_activeWorkerCount > 2) {
+			_activeWorkerCount.store(_activeWorkerCount.load() - 1);
 			//std::cout << "Shrinking active workers\n";
 		}
 
-		// In case worker 0 has stopped make sure to restart it
+		//std::cout << std::format("\33[2K \r JobSystem Workers: {}, Accepting new jobs: {}, total Jobs: {}", _activeWorkerCount.load(), int(!_preventIncomingScheduleCalls.load()), totalJobs);
+		//std::cout << std::format("\r Average Jobs: {}", averageJobsPerWorker);
+
+		// Start workers that aren't active
+		for (int i = 0; i < votedWorkers; i++)
+		{
+			JobSystemWorker& worker = _workers.at(i);
+
+			if (!worker.IsRunning())
+				worker.Start();
+		}
+
+
+		// In case worker 0 or 1 has stopped make sure to restart it
 		if (!_workers.at(0).IsRunning())
 			_workers.at(0).Start();
+		if (!_workers.at(1).IsRunning())
+			_workers.at(1).Start();
 
 		// Reschedule jobs already inside inactive workers
 		RescheduleWorkerJobsFromInActiveWorkers();
@@ -668,6 +673,9 @@ namespace JbSystem {
 
 	JobId JobSystem::Schedule(const int& workerId, Job* const& newjob, const JobPriority priority)
 	{
+		if (_preventIncomingScheduleCalls.load())
+			ExecuteJob(priority == JobPriority::High ? JobPriority::Normal : JobPriority::Low);
+
 		JobSystemWorker& worker = _workers.at(workerId);
 
 		const JobId& id = newjob->GetId();

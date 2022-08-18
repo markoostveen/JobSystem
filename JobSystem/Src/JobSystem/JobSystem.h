@@ -200,8 +200,15 @@ namespace JbSystem {
 
 		JbSystem::mutex _optimizePerformance;
 
+		const int _maxJobExecutionsBeforePerformanceOptimization = 1000;
+		std::atomic<int> _jobExecutionsTillOptimization = _maxJobExecutionsBeforePerformanceOptimization;
+
+		std::atomic<bool> _preventIncomingScheduleCalls;
+
 		const int _maxSchedulesTillMaintainance = 20;
 		std::atomic<int> _schedulesTillMaintainance = _maxSchedulesTillMaintainance;
+
+		
 
 	};
 

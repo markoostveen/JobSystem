@@ -83,8 +83,6 @@ void JobSystemWorker::ThreadLoop() {
 			if (otherWorkersActive || !_jobsystem->Active) {
 				break;
 			}
-
-			std::this_thread::yield();
 		}
 	}
 
@@ -146,6 +144,7 @@ void JobSystemWorker::Start()
 		return;
 	}
 
+	_shutdownRequested.store(false);
 	Active.store(true);
 
 
