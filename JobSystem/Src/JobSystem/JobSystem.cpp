@@ -7,8 +7,6 @@
 #include "boost/container/small_vector.hpp"
 #include <boost/range/adaptor/reversed.hpp>
 
-#include <format>
-
 namespace JbSystem {
 	const int MaxThreadDepth = 20;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
@@ -585,7 +583,7 @@ namespace JbSystem {
 				worker.Start();
 		}
 
-		std::cout << std::format("\33[2K \r JobSystem Workers: {}, Accepting new jobs: {}, total Jobs: {}\r", votedWorkers, int(!_preventIncomingScheduleCalls.load()), totalJobs);
+		std::cout << "\33[2K \r JobSystem Workers: " << votedWorkers << ", Accepting new jobs: " << int(!_preventIncomingScheduleCalls.load()) << ", total Jobs: " << totalJobs << "\r";
 		//std::cout << std::format("\r Average Jobs: {}", averageJobsPerWorker);
 
 		// In case worker 0 or 1 has stopped make sure to restart it
