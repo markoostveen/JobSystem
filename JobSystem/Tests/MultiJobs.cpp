@@ -63,10 +63,7 @@ bool JobsUsingDataFromEachother() {
 	}
 
 	auto jobSystem = JbSystem::JobSystem::GetInstance();
-	for (int i = 0; i < size; i++)
-	{
-		assert(jobSystem->WaitForJobCompletion(jobs.at(i)));
-	}
+	jobSystem->WaitForJobCompletion(jobs);
 
 	return true;
 }
