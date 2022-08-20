@@ -126,31 +126,31 @@ void SimpleCallBenchmark() {
 		*totalTimeJobHeapWorkerMulti += time;
 	}
 
-	double directAverageTime = *totalTimeDirect / repeatBeforeValid / 1000;
-	double jobAverageTime = *totalTimeJob / repeatBeforeValid / 1000;
-	double heapAverageTime = *totalTimeJobHeap / repeatBeforeValid / 1000;
-	double workerAverageTime = *totalTimeJobHeapWorker / repeatBeforeValid / 1000;
-	double multiWorkerAverageTime = *totalTimeJobHeapWorkerMulti / repeatBeforeValid / 1000;
+	double directAverageTime = *totalTimeDirect / repeatBeforeValid;
+	double jobAverageTime = *totalTimeJob / repeatBeforeValid;
+	double heapAverageTime = *totalTimeJobHeap / repeatBeforeValid;
+	double workerAverageTime = *totalTimeJobHeapWorker / repeatBeforeValid;
+	double multiWorkerAverageTime = *totalTimeJobHeapWorkerMulti / repeatBeforeValid;
 
 	printMutex.lock();
 	std::cout << "\n Run #" << runIndex << std::endl;
 	runIndex++;
 
-	std::cout << "direct calls per " << totalIterations << " times took " << directAverageTime / totalIterations << "us on average" << std::endl;
-	std::cout << "job on stack calls per " << totalIterations << " times took " << jobAverageTime / totalIterations << "us  on average" << std::endl;
-	std::cout << "job on heap calls per " << totalIterations << " times took " << heapAverageTime / totalIterations << "us  on average" << std::endl;
-	std::cout << "job on Worker calls per " << totalIterations << " times took " << workerAverageTime / totalIterations << "us  on average" << std::endl;
-	std::cout << "job on multiple Worker calls per " << totalIterations << " times took " << multiWorkerAverageTime / totalIterations << "us  on average" << std::endl;
+	std::cout << "direct calls per " << totalIterations << " times took " << directAverageTime / totalIterations << "ns on average" << std::endl;
+	std::cout << "job on stack calls per " << totalIterations << " times took " << jobAverageTime / totalIterations << "ns  on average" << std::endl;
+	std::cout << "job on heap calls per " << totalIterations << " times took " << heapAverageTime / totalIterations << "ns  on average" << std::endl;
+	std::cout << "job on Worker calls per " << totalIterations << " times took " << workerAverageTime / totalIterations << "ns  on average" << std::endl;
+	std::cout << "job on multiple Worker calls per " << totalIterations << " times took " << multiWorkerAverageTime / totalIterations << "ns  on average" << std::endl;
 
 
 
 	std::cout << "Average over " << repeatBeforeValid << " runs" << std::endl;
 
 	std::cout << std::endl;
-	std::cout << "direct calls vs Stack average difference per call " << (jobAverageTime - directAverageTime) / totalIterations << "us " << jobAverageTime / directAverageTime << " times slower" << std::endl;
-	std::cout << "direct calls vs Heap average difference per call " << (heapAverageTime - directAverageTime) / totalIterations << "us " << heapAverageTime / directAverageTime << " times slower" << std::endl;
-	std::cout << "direct calls vs Worker average difference per call " << (workerAverageTime - directAverageTime) / totalIterations << "us " << workerAverageTime / directAverageTime << " times slower" << std::endl;
-	std::cout << "direct calls vs multiple Worker average difference per call " << (multiWorkerAverageTime - directAverageTime) / totalIterations << "us " << multiWorkerAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Stack average difference per call " << (jobAverageTime - directAverageTime) / totalIterations << "ns " << jobAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Heap average difference per call " << (heapAverageTime - directAverageTime) / totalIterations << "ns " << heapAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Worker average difference per call " << (workerAverageTime - directAverageTime) / totalIterations << "ns " << workerAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs multiple Worker average difference per call " << (multiWorkerAverageTime - directAverageTime) / totalIterations << "ns " << multiWorkerAverageTime / directAverageTime << " times slower" << std::endl;
 	std::cout << "=======" << std::endl;
 	printMutex.unlock();
 }
@@ -215,31 +215,31 @@ void JobSystemCallBenchmark() {
 	auto jobId = jobSystem->Schedule(job, JobPriority::Low);
 	jobSystem->WaitForJobCompletion(jobId);
 
-	double directAverageTime = *totalTimeDirect / repeatBeforeValid / 1000;
-	double jobAverageTime = *totalTimeJob / repeatBeforeValid / 1000;
-	double heapAverageTime = *totalTimeJobHeap / repeatBeforeValid / 1000;
-	double workerAverageTime = *totalTimeJobHeapWorker / repeatBeforeValid / 1000;
-	double multiWorkerAverageTime = *totalTimeJobHeapWorkerMulti / repeatBeforeValid / 1000;
+	double directAverageTime = *totalTimeDirect / repeatBeforeValid;
+	double jobAverageTime = *totalTimeJob / repeatBeforeValid;
+	double heapAverageTime = *totalTimeJobHeap / repeatBeforeValid;
+	double workerAverageTime = *totalTimeJobHeapWorker / repeatBeforeValid;
+	double multiWorkerAverageTime = *totalTimeJobHeapWorkerMulti / repeatBeforeValid;
 
 	printMutex.lock();
 	std::cout << "\n Run #" << runIndex << std::endl;
 	runIndex++;
 
-	std::cout << "direct calls per " << totalIterations << " times took " << directAverageTime / totalIterations << "us on average" << std::endl;
-	std::cout << "job on stack calls per " << totalIterations << " times took " << jobAverageTime / totalIterations << "us  on average" << std::endl;
-	std::cout << "job on heap calls per " << totalIterations << " times took " << heapAverageTime / totalIterations << "us  on average" << std::endl;
-	std::cout << "job on Worker calls per " << totalIterations << " times took " << workerAverageTime / totalIterations << "us  on average" << std::endl;
-	std::cout << "job on multiple Worker calls per " << totalIterations << " times took " << multiWorkerAverageTime / totalIterations << "us  on average" << std::endl;
+	std::cout << "direct calls per " << totalIterations << " times took " << directAverageTime / totalIterations << "ns on average" << std::endl;
+	std::cout << "job on stack calls per " << totalIterations << " times took " << jobAverageTime / totalIterations << "ns  on average" << std::endl;
+	std::cout << "job on heap calls per " << totalIterations << " times took " << heapAverageTime / totalIterations << "ns  on average" << std::endl;
+	std::cout << "job on Worker calls per " << totalIterations << " times took " << workerAverageTime / totalIterations << "ns  on average" << std::endl;
+	std::cout << "job on multiple Worker calls per " << totalIterations << " times took " << multiWorkerAverageTime / totalIterations << "ns  on average" << std::endl;
 
 
 
 	std::cout << "Average over " << repeatBeforeValid << " runs" << std::endl;
 
 	std::cout << std::endl;
-	std::cout << "direct calls vs Stack average difference per call " << (jobAverageTime - directAverageTime) / totalIterations << "us " << jobAverageTime / directAverageTime << " times slower" << std::endl;
-	std::cout << "direct calls vs Heap average difference per call " << (heapAverageTime - directAverageTime) / totalIterations << "us " << heapAverageTime / directAverageTime << " times slower" << std::endl;
-	std::cout << "direct calls vs Worker average difference per call " << (workerAverageTime - directAverageTime) / totalIterations << "us " << workerAverageTime / directAverageTime << " times slower" << std::endl;
-	std::cout << "direct calls vs multiple Worker average difference per call " << (multiWorkerAverageTime - directAverageTime) / totalIterations << "us " << multiWorkerAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Stack average difference per call " << (jobAverageTime - directAverageTime) / totalIterations << "ns " << jobAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Heap average difference per call " << (heapAverageTime - directAverageTime) / totalIterations << "ns " << heapAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs Worker average difference per call " << (workerAverageTime - directAverageTime) / totalIterations << "ns " << workerAverageTime / directAverageTime << " times slower" << std::endl;
+	std::cout << "direct calls vs multiple Worker average difference per call " << (multiWorkerAverageTime - directAverageTime) / totalIterations << "ns " << multiWorkerAverageTime / directAverageTime << " times slower" << std::endl;
 	std::cout << "=======" << std::endl;
 	printMutex.unlock();
 }
