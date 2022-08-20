@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.20)
 
 macro(Add_Benchmark_JobSystem TestName CppFiles)
 	add_executable(${TestName} ${CppFiles})

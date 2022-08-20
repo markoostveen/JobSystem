@@ -1,7 +1,7 @@
 # CMakeList.txt : CMake project for JobSystem, include source and define
 # project specific logic here.
 #
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.20)
 
 
 set(CXX_STANDARD 20)
@@ -21,7 +21,7 @@ find_package(Threads REQUIRED)
 
 add_library (JobSystem STATIC ${JobSystemSources})
 target_include_directories(JobSystem PUBLIC ${JobSystemHeaderDirectory})
-set_property(TARGET JobSystem PROPERTY CXX_STANDARD 20)
+set_property(TARGET JobSystem PROPERTY CXX_STANDARD 23)
 
 target_link_libraries(JobSystem PRIVATE Threads::Threads)
 
