@@ -664,7 +664,9 @@ namespace JbSystem {
 			if (!worker.IsRunning())
 				worker.Start();
 
-			worker.ScheduleJob(id);
+			if(!worker.IsJobScheduled(id))
+				worker.ScheduleJob(id);
+
 			if (worker.GiveJob(oldJob, JobPriority::High)) {
 				oldWorker.UnScheduleJob(id);
 				return;
