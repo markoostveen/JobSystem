@@ -173,8 +173,8 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 		if (!_highPriorityTaskQueue.empty()) {
 			Job* value = _highPriorityTaskQueue.front();
 			_highPriorityTaskQueue.pop();
-			_modifyingThread.unlock();
 			assert(IsJobScheduled(value->GetId()));
+			_modifyingThread.unlock();
 			return value;
 		}
 	}
@@ -183,8 +183,8 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 		if (!_normalPriorityTaskQueue.empty()) {
 			Job* value = _normalPriorityTaskQueue.front();
 			_normalPriorityTaskQueue.pop();
-			_modifyingThread.unlock();
 			assert(IsJobScheduled(value->GetId()));
+			_modifyingThread.unlock();
 			return value;
 		}
 	}
@@ -193,8 +193,8 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 		if (!_lowPriorityTaskQueue.empty()) {
 			Job* value = _lowPriorityTaskQueue.front();
 			_lowPriorityTaskQueue.pop();
-			_modifyingThread.unlock();
 			assert(IsJobScheduled(value->GetId()));
+			_modifyingThread.unlock();
 			return value;
 		}
 	}
@@ -206,20 +206,24 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJob)
 {
 	const int& id = previouslyScheduledJob.ID();
+	_modifyingThread.lock();
 	_scheduledJobsMutex.lock();
 	assert(_scheduledJobs.contains(id));
 	_scheduledJobs.erase(id);
 	_scheduledJobsMutex.unlock();
+	_modifyingThread.unlock();
 }
 
 void JbSystem::JobSystemWorker::ScheduleJob(const JobId& jobId)
 {
 	const int& id = jobId.ID();
 
+	_modifyingThread.lock();
 	_scheduledJobsMutex.lock();
 	assert(!_scheduledJobs.contains(id));
 	_scheduledJobs.emplace(id);
 	_scheduledJobsMutex.unlock();
+	_modifyingThread.unlock();
 }
 
 bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority priority)
@@ -270,7 +274,6 @@ void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
 	const JobId& jobId = job->GetId();
 	const int& id = jobId.ID();
-	assert(IsJobScheduled(jobId));
 	UnScheduleJob(jobId);
 	job->Free();
 }
