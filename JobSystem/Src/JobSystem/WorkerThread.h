@@ -35,6 +35,8 @@ namespace JbSystem {
 		void UnScheduleJob(const JobId& previouslyScheduledJob);
 		void ScheduleJob(const JobId& jobId);
 
+		bool IsJobInQueue(const JobId& jobId);
+
 		/// <summary>
 		/// Give a job to the worker thread
 		/// NOTE* This will take ownership over the job
@@ -69,9 +71,9 @@ namespace JbSystem {
 		std::atomic<bool> _shutdownRequested;
 
 		mutex _modifyingThread;
-		std::queue<Job*> _highPriorityTaskQueue;
-		std::queue<Job*> _normalPriorityTaskQueue;
-		std::queue<Job*> _lowPriorityTaskQueue;
+		std::deque<Job*> _highPriorityTaskQueue;
+		std::deque<Job*> _normalPriorityTaskQueue;
+		std::deque<Job*> _lowPriorityTaskQueue;
 
 		mutex _scheduledJobsMutex;
 		std::unordered_set<int> _scheduledJobs;

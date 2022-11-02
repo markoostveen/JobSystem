@@ -172,7 +172,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 	if (maxTimeInvestment >= JobPriority::High) {
 		if (!_highPriorityTaskQueue.empty()) {
 			Job* value = _highPriorityTaskQueue.front();
-			_highPriorityTaskQueue.pop();
+			_highPriorityTaskQueue.pop_front();
 			assert(IsJobScheduled(value->GetId()));
 			_modifyingThread.unlock();
 			return value;
@@ -182,7 +182,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 	if (maxTimeInvestment >= JobPriority::Normal) {
 		if (!_normalPriorityTaskQueue.empty()) {
 			Job* value = _normalPriorityTaskQueue.front();
-			_normalPriorityTaskQueue.pop();
+			_normalPriorityTaskQueue.pop_front();
 			assert(IsJobScheduled(value->GetId()));
 			_modifyingThread.unlock();
 			return value;
@@ -192,7 +192,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 	if (maxTimeInvestment >= JobPriority::Low) {
 		if (!_lowPriorityTaskQueue.empty()) {
 			Job* value = _lowPriorityTaskQueue.front();
-			_lowPriorityTaskQueue.pop();
+			_lowPriorityTaskQueue.pop_front();
 			assert(IsJobScheduled(value->GetId()));
 			_modifyingThread.unlock();
 			return value;
@@ -203,12 +203,37 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 	return nullptr;
 }
 
+bool JbSystem::JobSystemWorker::IsJobInQueue(const JobId& jobId) {
+
+	const int& id = jobId.ID();
+	for (const auto& highPriorityJob : _highPriorityTaskQueue)
+	{
+		if (highPriorityJob->GetId().ID() == id)
+			return true;
+	}
+
+	for (const auto& normalPriorityJob : _normalPriorityTaskQueue)
+	{
+		if (normalPriorityJob->GetId().ID() == id)
+			return true;
+	}
+
+	for (const auto& lowPriorityJob : _lowPriorityTaskQueue)
+	{
+		if (lowPriorityJob->GetId().ID() == id)
+			return true;
+	}
+
+	return false;
+}
+
 void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJob)
 {
 	const int& id = previouslyScheduledJob.ID();
 	_modifyingThread.lock();
 	_scheduledJobsMutex.lock();
 	assert(_scheduledJobs.contains(id));
+	assert(!IsJobInQueue(id)); // In case the task is still scheduled then it wasn't removed properly
 	_scheduledJobs.erase(id);
 	_scheduledJobsMutex.unlock();
 	_modifyingThread.unlock();
@@ -233,17 +258,18 @@ bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority pr
 	}
 
 	_modifyingThread.lock();
+	assert(_scheduledJobs.contains(newJob->GetId().ID()));
 
 	if (priority == JobPriority::High) {
-		_highPriorityTaskQueue.emplace(newJob);
+		_highPriorityTaskQueue.emplace_back(newJob);
 	}
 
 	else if (priority == JobPriority::Normal) {
-		_normalPriorityTaskQueue.emplace(newJob);
+		_normalPriorityTaskQueue.emplace_back(newJob);
 	}
 
 	else if (priority == JobPriority::Low) {
-		_lowPriorityTaskQueue.emplace(newJob);
+		_lowPriorityTaskQueue.emplace_back(newJob);
 	}
 
 	_modifyingThread.unlock();

@@ -1,4 +1,4 @@
-﻿#include "JobSystem.h"
+#include "JobSystem.h"
 
 #include <functional>
 #include <iostream>
@@ -641,12 +641,14 @@ namespace JbSystem {
 		JobSystemWorker& worker = _workers.at(workerId);
 
 		const JobId& id = newjob->GetId();
+
 		if (!worker.IsJobScheduled(id))
 			worker.ScheduleJob(id);
 
 		if (!worker.GiveJob(newjob, priority))
 		{
 			SafeRescheduleJob(newjob, worker);
+			return id;
 		}
 
 		return id;
@@ -667,8 +669,13 @@ namespace JbSystem {
 			if(!worker.IsJobScheduled(id))
 				worker.ScheduleJob(id);
 
+			// In case the new worker is not active it might be rescheduled, then the job shouldn't be moved
+			if (worker.IsJobInQueue(id))
+				return;
+
 			if (worker.GiveJob(oldJob, JobPriority::High)) {
-				oldWorker.UnScheduleJob(id);
+				if(&worker != &oldWorker)
+					oldWorker.UnScheduleJob(id);
 				return;
 			}
 			worker.UnScheduleJob(id);
