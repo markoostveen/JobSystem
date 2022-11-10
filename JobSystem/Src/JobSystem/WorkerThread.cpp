@@ -258,7 +258,11 @@ bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority pr
 	}
 
 	_modifyingThread.lock();
-	assert(_scheduledJobs.contains(newJob->GetId().ID()));
+	_scheduledJobsMutex.lock();
+		if(!_scheduledJobs.contains(newJob->GetId().ID()))
+			ScheduleJob(newJob->GetId());
+
+	_scheduledJobsMutex.unlock();
 
 	if (priority == JobPriority::High) {
 		_highPriorityTaskQueue.emplace_back(newJob);
