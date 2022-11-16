@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_MAIN
-#include "TestingFramework/catch.hpp"
 #include "JobSystem/JobSystem.h"
+
+#include <catch2/catch_all.hpp>
 
 #include <iostream>
 #include <vector>

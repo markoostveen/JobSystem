@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 inline void DoStuff() {
 	std::cout << "Doing stuff during execution" << std::endl;
 
