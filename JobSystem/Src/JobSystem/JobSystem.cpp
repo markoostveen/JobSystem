@@ -222,11 +222,11 @@ namespace JbSystem {
 		return JobSystemSingleton;
 	}
 
-	JobId JobSystem::Schedule(Job* const& newjob, const JobPriority priority)
+	JobId JobSystem::Schedule(Job* const& newJob, const JobPriority priority)
 	{
-		JobId jobId = newjob->GetId();
+		JobId jobId = newJob->GetId();
 
-		Schedule(GetRandomWorker(), newjob, priority);
+		Schedule(GetRandomWorker(), newJob, priority);
 		return jobId;
 	}
 
@@ -633,23 +633,35 @@ namespace JbSystem {
 		return rand() % _activeWorkerCount.load();
 	}
 
-	JobId JobSystem::Schedule(const int& workerId, Job* const& newjob, const JobPriority priority)
+	JobId JobSystem::Schedule(const int& workerId, Job* const& newJob, const JobPriority priority)
 	{
 		if (_preventIncomingScheduleCalls.load())
 			ExecuteJob(priority == JobPriority::High ? JobPriority::Normal : JobPriority::Low);
 
 		JobSystemWorker& worker = _workers.at(workerId);
 
-		const JobId& id = newjob->GetId();
+		const JobId& id = newJob->GetId();
 
-		if (!worker.IsJobScheduled(id))
-			worker.ScheduleJob(id);
-
-		if (!worker.GiveJob(newjob, priority))
-		{
-			SafeRescheduleJob(newjob, worker);
-			return id;
+		worker._modifyingThread.lock();
+		worker._scheduledJobsMutex.lock();
+		if (!worker._scheduledJobs.contains(id.ID())){
+			worker._scheduledJobs.emplace(id.ID());
 		}
+
+		if (priority == JobPriority::High) {
+			worker._highPriorityTaskQueue.emplace_back(newJob);
+		}
+
+		else if (priority == JobPriority::Normal) {
+			worker._normalPriorityTaskQueue.emplace_back(newJob);
+		}
+
+		else if (priority == JobPriority::Low) {
+			worker._lowPriorityTaskQueue.emplace_back(newJob);
+		}
+
+		worker._modifyingThread.unlock();
+		worker._scheduledJobsMutex.unlock();
 
 		return id;
 	}
