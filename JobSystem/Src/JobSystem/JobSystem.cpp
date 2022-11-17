@@ -66,7 +66,8 @@ namespace JbSystem {
 			_workers.emplace_back(this);
 		}
 
-		for (int i = 0; i < _workerCount; i++)
+		// Start critical minimum workers, others will start when job queue grows
+		for (int i = 0; i < 2; i++)
 		{
 			// set callback function for worker threads to call the execute job on the job system
 			_workers[i].Start();
