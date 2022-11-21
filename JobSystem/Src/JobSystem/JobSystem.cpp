@@ -554,7 +554,7 @@ namespace JbSystem {
 			}
 
 			worker._scheduledJobsMutex.lock();
-			totalJobs += worker._scheduledJobs.size();
+			totalJobs += static_cast<int>(worker._scheduledJobs.size());
 			worker._scheduledJobsMutex.unlock();
 		}
 

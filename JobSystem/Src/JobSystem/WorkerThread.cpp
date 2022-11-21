@@ -42,8 +42,8 @@ void JobSystemWorker::ThreadLoop() {
 		_incomingWorkLock.lock();
 
 		// Take a possible job from a random worker
-		JobSystemWorker& worker = _jobsystem->_workers[_jobsystem->GetRandomWorker()];
-		job = _jobsystem->TakeJobFromWorker(worker, JobPriority::Low);
+		JobSystemWorker& randomWorker = _jobsystem->_workers[_jobsystem->GetRandomWorker()];
+		job = _jobsystem->TakeJobFromWorker(randomWorker, JobPriority::Low);
 
 		// In case shutdown of shutdown of jobsystem
 		if (_shutdownRequested.load()) {
@@ -57,9 +57,9 @@ void JobSystemWorker::ThreadLoop() {
 
 		if (job != nullptr)
 		{
-			assert(worker.IsJobScheduled(job->GetId()));
+			assert(randomWorker.IsJobScheduled(job->GetId()));
 			job->Run();
-			worker.FinishJob(job);
+			randomWorker.FinishJob(job);
 			_isBusy.store(false);
 		}
 
@@ -299,7 +299,6 @@ void JbSystem::JobSystemWorker::GiveFutureJobs(const std::vector<Job*>& newjobs,
 void JbSystem::JobSystemWorker::FinishJob(Job*& job)
 {
 	const JobId& jobId = job->GetId();
-	const int& id = jobId.ID();
 	UnScheduleJob(jobId);
 	job->Free();
 }
