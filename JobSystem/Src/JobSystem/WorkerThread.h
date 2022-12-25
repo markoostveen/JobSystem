@@ -37,6 +37,8 @@ namespace JbSystem {
 
 		bool IsJobInQueue(const JobId& jobId);
 
+		size_t ScheduledJobCount();
+
 		/// <summary>
 		/// Give a job to the worker thread
 		/// NOTE* This will take ownership over the job

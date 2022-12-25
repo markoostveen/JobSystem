@@ -124,6 +124,12 @@ namespace JbSystem {
 		template<class ...Args>
 		void WaitForJobCompletion(const std::vector<JobId>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
 
+
+		/// <summary>
+		/// Wait until all jobs committed to the jobsystem have been completed
+		/// </summary>
+		void WaitForAllJobs();
+
 		/// <summary>
 		/// Executes a scheduled job
 		/// </summary>

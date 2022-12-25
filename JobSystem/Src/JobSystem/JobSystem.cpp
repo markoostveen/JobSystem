@@ -162,6 +162,25 @@ namespace JbSystem {
 		return allJobs;
 	}
 
+	void JobSystem::WaitForAllJobs()
+	{
+		bool wasActive = false;
+		do {
+			wasActive = false;
+			for (JobSystemWorker& worker : boost::adaptors::reverse(_workers)) {
+				if (!worker.IsRunning())
+					continue;
+
+				if (!worker.Busy()) {
+					if (worker.ScheduledJobCount() == 0) {
+						worker.RequestShutdown();
+					}
+				}
+				wasActive = true;
+			}
+		} while (wasActive);
+	}
+
 	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
 	{
 		if (threadDepth > MaxThreadDepth) { // allow a maximum recursion depth of x

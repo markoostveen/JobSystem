@@ -227,6 +227,14 @@ bool JbSystem::JobSystemWorker::IsJobInQueue(const JobId& jobId) {
 	return false;
 }
 
+size_t JbSystem::JobSystemWorker::ScheduledJobCount()
+{
+	_scheduledJobsMutex.lock();
+	size_t scheduledCount = _scheduledJobs.size();
+	_scheduledJobsMutex.unlock();
+	return scheduledCount;
+}
+
 void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJob)
 {
 	const int& id = previouslyScheduledJob.ID();
