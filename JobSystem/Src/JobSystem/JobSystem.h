@@ -139,6 +139,8 @@ namespace JbSystem {
 		int GetActiveWorkerCount();
 		int GetWorkerId(JobSystemWorker* worker);
 
+		void ShowStats(bool option = true);
+
 		/// <summary>
 		/// Get singleton instance
 		/// </summary>
@@ -206,6 +208,8 @@ namespace JbSystem {
 		std::atomic<int> _jobExecutionsTillOptimization = _maxJobExecutionsBeforePerformanceOptimization;
 
 		std::atomic<bool> _preventIncomingScheduleCalls;
+
+		std::atomic<bool> _showStats;
 	};
 
 	template<class ...Args>
