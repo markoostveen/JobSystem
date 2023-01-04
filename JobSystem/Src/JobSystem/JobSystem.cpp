@@ -169,6 +169,8 @@ namespace JbSystem {
 	{
 		bool wasActive = false;
 		do {
+			ExecuteJob(); // Help complete the remaining jobs
+
 			wasActive = false;
 			for (JobSystemWorker& worker : boost::adaptors::reverse(_workers)) {
 				if (!worker.IsRunning())
