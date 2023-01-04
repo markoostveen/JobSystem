@@ -158,7 +158,7 @@ namespace JbSystem {
 		/// Shutdown all worker threads
 		/// </summary>
 		/// <returns> vector of all remaining jobs </returns>
-		std::shared_ptr<std::vector<Job*>> Shutdown();
+		std::vector<Job*> Shutdown();
 
 		int ScheduleFutureJob(Job* const& newFutureJob);
 		const std::vector<JobId> BatchScheduleJob(const std::vector<Job*>& newjobs, const JobPriority priority);
@@ -196,7 +196,7 @@ namespace JbSystem {
 		/// Take all scheduled jobs from all workers
 		/// </summary>
 		/// <returns></returns>
-		std::shared_ptr<std::vector<Job*>> StealAllJobsFromWorkers();
+		std::vector<Job*> StealAllJobsFromWorkers();
 
 		std::atomic<int> _activeWorkerCount = 0;
 		int _workerCount = 0;
@@ -204,7 +204,7 @@ namespace JbSystem {
 
 		JbSystem::mutex _optimizePerformance;
 
-		const int _maxJobExecutionsBeforePerformanceOptimization = 1000;
+		const int _maxJobExecutionsBeforePerformanceOptimization = 50;
 		std::atomic<int> _jobExecutionsTillOptimization = _maxJobExecutionsBeforePerformanceOptimization;
 
 		std::atomic<bool> _preventIncomingScheduleCalls;

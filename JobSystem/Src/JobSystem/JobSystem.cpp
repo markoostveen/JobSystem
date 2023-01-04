@@ -32,7 +32,7 @@ namespace JbSystem {
 
 	JobSystem::~JobSystem()
 	{
-		for (Job*& leftOverJob : *Shutdown()) {
+		for (Job*& leftOverJob : Shutdown()) {
 			leftOverJob->Free();
 		}
 	}
@@ -48,7 +48,7 @@ namespace JbSystem {
 
 		bool firstStartup = _activeWorkerCount.load() == 0;
 
-		std::shared_ptr<std::vector<Job*>> jobs;
+		std::vector<Job*> jobs;
 		if (!firstStartup) {
 			//std::cout << "JobSystem is shutting down" << std::endl;
 
@@ -82,12 +82,12 @@ namespace JbSystem {
 
 		if (!firstStartup) {
 			auto rescheduleJobFunction = [](JobSystem* jobSystem, auto jobs) {
-				const size_t totalJobs = jobs->size();
+				const size_t totalJobs = jobs.size();
 				size_t iteration = 0;
 				while (iteration < totalJobs) {
 					for (int i = 0; i < jobSystem->_workerCount && iteration < totalJobs; i++)
 					{
-						Job*& newJob = jobs->at(iteration);
+						Job*& newJob = jobs.at(iteration);
 
 						JobSystemWorker& worker = jobSystem->_workers.at(i);
 						worker.ScheduleJob(newJob->GetId());
@@ -109,7 +109,7 @@ namespace JbSystem {
 		//std::cout << "JobSystem started with " << threadCount << " workers!" << std::endl;
 	}
 
-	std::shared_ptr<std::vector<Job*>> JbSystem::JobSystem::Shutdown()
+	std::vector<Job*> JbSystem::JobSystem::Shutdown()
 	{
 		//Wait for jobsystem to finish remaining jobs
 		bool finished = false;
@@ -149,10 +149,10 @@ namespace JbSystem {
 		}
 
 		auto remainingJobs = StealAllJobsFromWorkers();
-		allJobs->insert(allJobs->begin(), remainingJobs->begin(), remainingJobs->end());
+		allJobs.insert(allJobs.begin(), remainingJobs.begin(), remainingJobs.end());
 
 
-		for (const auto& job : *allJobs) {
+		for (const auto& job : allJobs) {
 			for (auto& worker : _workers) {
 				const JobId& id = job->GetId();
 				if (worker.IsJobScheduled(id))
@@ -176,7 +176,7 @@ namespace JbSystem {
 
 				if (!worker.Busy()) {
 					if (worker.ScheduledJobCount() == 0) {
-						worker.RequestShutdown();
+						continue;
 					}
 				}
 				wasActive = true;
@@ -594,8 +594,9 @@ namespace JbSystem {
 			_preventIncomingScheduleCalls.store(false);
 
 		if (averageJobsPerWorker > 1.0) {
-			if(_activeWorkerCount < _workerCount)
+			if (_activeWorkerCount < _workerCount) {
 				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
+			}
 		}
 		else if (_activeWorkerCount > 2) {
 			_activeWorkerCount.store(_activeWorkerCount.load() - 1);
@@ -742,17 +743,21 @@ namespace JbSystem {
 		return jobIds;
 	}
 
-	std::shared_ptr<std::vector<Job*>> JobSystem::StealAllJobsFromWorkers()
+	std::vector<Job*> JobSystem::StealAllJobsFromWorkers()
 	{
-		auto jobs = std::make_shared<std::vector<Job*>>();
-		jobs->reserve(10000);
+		std::vector<Job*> jobs;
+		jobs.reserve(10000);
 		for (int i = 0; i < _workerCount; i++)
 		{
 			JobSystemWorker& worker = _workers.at(i);
-			Job* job = worker.TryTakeJob();
-			while (job != nullptr) {
-				jobs->emplace_back(job);
+			while (worker.ScheduledJobCount() > 0) {
+				Job* job = worker.TryTakeJob();
+				if (job == nullptr)
+					continue;
+
+				jobs.emplace_back(job);
 				job = worker.TryTakeJob();
+
 			}
 		}
 		return jobs;
