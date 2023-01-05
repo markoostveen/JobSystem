@@ -198,13 +198,16 @@ namespace JbSystem {
 		/// <returns></returns>
 		std::vector<Job*> StealAllJobsFromWorkers();
 
+		void MaybeOptimize();
+		void MaybeHelpLowerQueue(const JobPriority& priority);
+
 		std::atomic<int> _activeWorkerCount = 0;
 		int _workerCount = 0;
 		std::vector<JobSystemWorker> _workers;
 
 		JbSystem::mutex _optimizePerformance;
 
-		const int _maxJobExecutionsBeforePerformanceOptimization = 50;
+		const int _maxJobExecutionsBeforePerformanceOptimization = 10;
 		std::atomic<int> _jobExecutionsTillOptimization = _maxJobExecutionsBeforePerformanceOptimization;
 
 		std::atomic<bool> _preventIncomingScheduleCalls;
@@ -327,6 +330,7 @@ namespace JbSystem {
 
 
 			jobSystem->RescheduleWorkerJobsFromInActiveWorkers();
+			jobSystem->MaybeHelpLowerQueue(JobPriority::High);
 			jobSystem->Schedule(rescheduleJob, JobPriority::Low);
 		};
 

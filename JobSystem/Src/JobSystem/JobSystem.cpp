@@ -10,9 +10,15 @@
 #include <format>
 
 namespace JbSystem {
-	const int MaxThreadDepth = 20;
+	// Prevent wild recursion patterns
+	const int maxThreadDepth = 20;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
-	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* MaxThreadDepth> jobStack; // stack of all jobs our current thread is executing
+	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* maxThreadDepth> jobStack; // stack of all jobs our current thread is executing
+	
+	// Control Optimization cycles
+	const int maxOptimizeInCycles = maxThreadDepth * 10;
+	static thread_local int optimizeInCycles = 0;
+
 	bool JobInStack(const JobId& JobId) {
 		for (int i = 0; i < jobStack.size(); i++)
 		{
@@ -188,16 +194,19 @@ namespace JbSystem {
 
 	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
 	{
-		if (threadDepth > MaxThreadDepth) { // allow a maximum recursion depth of x
+		if (threadDepth > maxThreadDepth) { // allow a maximum recursion depth of x
+
 			//Stack was full we might be able to start additional workers
 			StartAllWorkers();
 
+			// In case all options are done start additional thread to prevent a deadlock senario
+			std::jthread emergencyWorker = std::jthread([&]() { ExecuteJob(); });
 			return;
 		}
 
 		// Try and run a job
 		threadDepth++;
-		JobSystemWorker& worker = _workers[GetRandomWorker()];
+		JobSystemWorker& worker = _workers.at(GetRandomWorker());
 		Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
 
 		if (primedJob != nullptr) {
@@ -209,13 +218,7 @@ namespace JbSystem {
 		}
 		threadDepth--;
 
-		// Optimize performance once in a while
-		int remaining = _jobExecutionsTillOptimization.load();
-		_jobExecutionsTillOptimization.store(_jobExecutionsTillOptimization.load() - 1);
-		if (remaining < 1) {
-			_jobExecutionsTillOptimization.store(_maxJobExecutionsBeforePerformanceOptimization);
-			OptimizePerformance();
-		}
+		MaybeOptimize();
 	}
 
 	int JobSystem::GetWorkerCount()
@@ -341,6 +344,9 @@ namespace JbSystem {
 		const int workerId = GetRandomWorker();
 		const JobId& jobId = newFutureJob->GetId();
 		_workers[workerId].GiveFutureJob(jobId);
+		
+		MaybeHelpLowerQueue(JobPriority::Normal);
+		
 		return workerId;
 	}
 
@@ -379,18 +385,19 @@ namespace JbSystem {
 		{
 			for (int j = 0; j < jobsPerWorker; j++)
 			{
-				workerIds[j + (i * jobsPerWorker)] = i;
+				workerIds.at(j + (i * jobsPerWorker)) = i;
 			}
 		}
 
 		for (int i = 0; i < workerCount; i++)
 		{
 			_workers[i].GiveFutureJobs(newjobs, i * jobsPerWorker, jobsPerWorker);
+			MaybeHelpLowerQueue(JobPriority::Normal);
 		}
 
 		for (int i = 0; i < remainer; i++)
 		{
-			workerIds[totalAmountOfJobs - i - 1] = i;
+			workerIds.at(totalAmountOfJobs - i - 1) = i;
 		}
 
 		for (int i = 0; i < remainer; i++)
@@ -399,7 +406,9 @@ namespace JbSystem {
 			workerIds[totalAmountOfJobs - i - 1] = i;
 			const JobId jobId = newjobs[totalAmountOfJobs - i - 1]->GetId();
 			_workers[workerId].GiveFutureJob(jobId);
+			MaybeHelpLowerQueue(JobPriority::Normal);
 		}
+
 
 		return workerIds;
 	}
@@ -485,10 +494,33 @@ namespace JbSystem {
 		int waitingPeriod = 0;
 		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
 		while (!finished->load()) {
-			ExecuteJob(maximumHelpEffort);
+
+			JobSystemWorker& worker = _workers.at(GetRandomWorker());
+			Job* primedJob = TakeJobFromWorker(worker, maximumHelpEffort);
+
+			if (primedJob != nullptr) {
+
+				// In case the primed job is the job we are waiting for we must refuse this offer
+				if (JobInStack(primedJob->GetId()))
+				{
+					SafeRescheduleJob(primedJob, worker);
+					continue;
+				}
+
+				// execute job
+				jobStack.emplace_back(primedJob);
+				primedJob->Run();
+				auto it = std::find(jobStack.begin(), jobStack.end(), primedJob);
+				jobStack.erase(it);
+				worker.FinishJob(primedJob);
+			}
+
+
 			waitingPeriod++;
 
 			if (waitingPeriod > 500) {
+				if (_preventIncomingScheduleCalls.load())
+					continue; // When we prevent new jobs from being created we must first finish existing jobs
 
 				switch (maximumHelpEffort)
 				{
@@ -587,10 +619,11 @@ namespace JbSystem {
 			worker._scheduledJobsMutex.unlock();
 		}
 
-		double averageJobsPerWorker = double(totalJobs) / double(votedWorkers);
+		votedWorkers++; // Increase to include main
+		int averageJobsPerWorker = totalJobs / votedWorkers;
 
 
-		if (averageJobsPerWorker > 1.5 && _activeWorkerCount.load() == _workerCount)
+		if (averageJobsPerWorker > maxThreadDepth / 2 && _activeWorkerCount.load() >= _workerCount)
 			_preventIncomingScheduleCalls.store(true);
 		else
 			_preventIncomingScheduleCalls.store(false);
@@ -669,8 +702,6 @@ namespace JbSystem {
 
 	JobId JobSystem::Schedule(const int& workerId, Job* const& newJob, const JobPriority priority)
 	{
-		if (_preventIncomingScheduleCalls.load())
-			ExecuteJob(priority == JobPriority::High ? JobPriority::Normal : JobPriority::Low);
 
 		JobSystemWorker& worker = _workers.at(workerId);
 
@@ -696,6 +727,10 @@ namespace JbSystem {
 
 		worker._modifyingThread.unlock();
 		worker._scheduledJobsMutex.unlock();
+
+		MaybeHelpLowerQueue(priority == JobPriority::High ? JobPriority::Normal : JobPriority::Low);
+
+		MaybeOptimize();
 
 		return id;
 	}
@@ -763,5 +798,26 @@ namespace JbSystem {
 			}
 		}
 		return jobs;
+	}
+
+	void JobSystem::MaybeOptimize()
+	{
+		optimizeInCycles--;
+		if (optimizeInCycles > 0)
+			return;
+		optimizeInCycles = maxOptimizeInCycles;
+
+		// Optimize performance once in a while
+		int remaining = _jobExecutionsTillOptimization.load();
+		_jobExecutionsTillOptimization.store(_jobExecutionsTillOptimization.load() - 1);
+		if (remaining < 1) {
+			_jobExecutionsTillOptimization.store(_maxJobExecutionsBeforePerformanceOptimization);
+			OptimizePerformance();
+		}
+	}
+	void JobSystem::MaybeHelpLowerQueue(const JobPriority& priority)
+	{
+		if (_preventIncomingScheduleCalls.load())
+			ExecuteJob(priority);
 	}
 }
