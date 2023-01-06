@@ -13,8 +13,10 @@
 #include <array>
 #include <type_traits>
 #include <cassert>
+#include <functional>
 
 namespace JbSystem {
+
 
 	class JobSystem {
 
@@ -23,6 +25,7 @@ namespace JbSystem {
 		typedef void(*WorkerThreadLoop)(JobSystemWorker* worker);
 
 	public:
+		
 		JobSystem(const int threadCount = std::thread::hardware_concurrency() - 1, WorkerThreadLoop workerLoop = [](JobSystemWorker* worker) { worker->ThreadLoop(); });
 		~JobSystem();
 
@@ -122,7 +125,7 @@ namespace JbSystem {
 		/// <param name="callback">function to execute after jobs have been completed</param>
 		/// <returns></returns>
 		template<class ...Args>
-		void WaitForJobCompletion(const std::vector<JobId>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
+		void ScheduleAfterJobCompletion(const std::vector<JobId>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
 
 
 		/// <summary>
@@ -177,6 +180,8 @@ namespace JbSystem {
 
 		bool RescheduleWorkerJobs(JobSystemWorker& worker);
 		void RescheduleWorkerJobsFromInActiveWorkers();
+
+		static void RunJob(JobSystemWorker& worker, Job*& currentJob);
 
 		int GetRandomWorker();
 
@@ -318,7 +323,7 @@ namespace JbSystem {
 	}
 
 	template<class ...Args>
-	inline void JobSystem::WaitForJobCompletion(const std::vector<JobId>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
+	inline void JobSystem::ScheduleAfterJobCompletion(const std::vector<JobId>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
 	{
 		struct DependenciesTag {};
 

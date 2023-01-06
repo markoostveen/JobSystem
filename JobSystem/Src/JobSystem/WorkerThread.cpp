@@ -58,8 +58,7 @@ void JobSystemWorker::ThreadLoop() {
 		if (job != nullptr)
 		{
 			assert(randomWorker.IsJobScheduled(job->GetId()));
-			job->Run();
-			randomWorker.FinishJob(job);
+			_jobsystem->RunJob(randomWorker, job);
 			_isBusy.store(false);
 		}
 

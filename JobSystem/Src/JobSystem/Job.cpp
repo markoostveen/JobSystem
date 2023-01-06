@@ -13,13 +13,22 @@ JobId JbSystem::Job::GetId() const
 }
 
 static std::atomic<int> Identifier;
+void JbSystem::Job::SetIgnoreCallback(const IgnoreJobCallback& callback)
+{
+	_ignoreCallback = callback;
+}
+const IgnoreJobCallback& JbSystem::Job::GetIgnoreCallback() const
+{
+	return _ignoreCallback;
+}
+
 const JobId JbSystem::Job::RequestUniqueID()
 {
 	return JobId{ Identifier++ };
 }
 
 JbSystem::Job::Job(const JobId& id, const Function& callback, const DestructorFunction& destructorfunction)
-	: _basefunction(callback), _destructorfunction(destructorfunction), _id(id) {
+	: _basefunction(callback), _destructorfunction(destructorfunction), _id(id), _ignoreCallback(nullptr) {
 }
 
 JbSystem::JobId::JobId(const int& Id)

@@ -10,19 +10,34 @@
 #include <format>
 
 namespace JbSystem {
+
+
 	// Prevent wild recursion patterns
 	const int maxThreadDepth = 20;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
-	static thread_local boost::container::small_vector<const Job*, sizeof(Job*)* maxThreadDepth> jobStack; // stack of all jobs our current thread is executing
+	static thread_local boost::container::small_vector<const Job*, sizeof(const Job*)* maxThreadDepth> jobStack; // stack of all jobs our current thread is executing
 	
 	// Control Optimization cycles
 	const int maxOptimizeInCycles = maxThreadDepth * 10;
 	static thread_local int optimizeInCycles = 0;
 
-	bool JobInStack(const JobId& JobId) {
+	bool JobInStack(const JobId& jobId) {
 		for (int i = 0; i < jobStack.size(); i++)
 		{
-			if (jobStack[i]->GetId() == JobId)
+			if (jobStack.at(i)->GetId() == jobId)
+				return true;
+		}
+		return false;
+	}
+
+	bool IsProposedJobIgnoredByJobStack(const JobId& proposedJob) {
+		for (int i = 0; i < jobStack.size(); i++)
+		{
+			const Job* const& job = jobStack.at(i);
+			if (job->GetIgnoreCallback() == nullptr)
+				continue;
+
+			if (job->GetIgnoreCallback()(proposedJob))
 				return true;
 		}
 		return false;
@@ -210,11 +225,12 @@ namespace JbSystem {
 		Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
 
 		if (primedJob != nullptr) {
-			jobStack.emplace_back(primedJob);
-			primedJob->Run();
-			auto it = std::find(jobStack.begin(), jobStack.end(), primedJob);
-			jobStack.erase(it);
-			worker.FinishJob(primedJob);
+			if (IsProposedJobIgnoredByJobStack(primedJob->GetId())) {
+				ExecuteJob(maxTimeInvestment);
+				return;
+			}
+
+			RunJob(worker, primedJob);
 		}
 		threadDepth--;
 
@@ -267,7 +283,7 @@ namespace JbSystem {
 	{
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
 		int workerId = ScheduleFutureJob(job);
-		WaitForJobCompletion(dependencies,
+		ScheduleAfterJobCompletion(dependencies,
 			[](auto jobsystem, auto workerId, auto job, auto priority)
 			{
 				jobsystem->Schedule(workerId, job, priority);
@@ -444,7 +460,7 @@ namespace JbSystem {
 			delete jobData;
 		};
 
-		WaitForJobCompletion(dependencies,
+		ScheduleAfterJobCompletion(dependencies,
 			scheduleCallback,
 			this, new JobData(workerIds, newjobs), priority);
 
@@ -490,31 +506,10 @@ namespace JbSystem {
 			finished->store(true);
 		};
 
-		WaitForJobCompletion({ jobId }, waitLambda, finished);
+		ScheduleAfterJobCompletion({ jobId }, waitLambda, finished);
 		int waitingPeriod = 0;
 		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
 		while (!finished->load()) {
-
-			JobSystemWorker& worker = _workers.at(GetRandomWorker());
-			Job* primedJob = TakeJobFromWorker(worker, maximumHelpEffort);
-
-			if (primedJob != nullptr) {
-
-				// In case the primed job is the job we are waiting for we must refuse this offer
-				if (JobInStack(primedJob->GetId()))
-				{
-					SafeRescheduleJob(primedJob, worker);
-					continue;
-				}
-
-				// execute job
-				jobStack.emplace_back(primedJob);
-				primedJob->Run();
-				auto it = std::find(jobStack.begin(), jobStack.end(), primedJob);
-				jobStack.erase(it);
-				worker.FinishJob(primedJob);
-			}
-
 
 			waitingPeriod++;
 
@@ -541,6 +536,21 @@ namespace JbSystem {
 
 				waitingPeriod = 0;
 				RescheduleWorkerJobsFromInActiveWorkers();
+			}
+
+			JobSystemWorker& worker = _workers.at(GetRandomWorker());
+			Job* primedJob = TakeJobFromWorker(worker, maximumHelpEffort);
+			if (primedJob != nullptr) {
+
+				// In case the primed job is the job we are waiting for we must refuse this offer
+				if (JobInStack(primedJob->GetId()) || IsProposedJobIgnoredByJobStack(primedJob->GetId()))
+				{
+					SafeRescheduleJob(primedJob, worker);
+					continue;
+				}
+
+				// Execute job
+				RunJob(worker, primedJob);
 			}
 		}
 
@@ -693,6 +703,23 @@ namespace JbSystem {
 		{
 			RescheduleWorkerJobs(_workers[i]);
 		}
+	}
+
+	void JobSystem::RunJob(JobSystemWorker& worker, Job*& currentJob)
+	{
+		assert(!JobInStack(currentJob->GetId()));
+
+		jobStack.emplace_back(currentJob);
+		currentJob->Run();
+		for (size_t i = 0; i < jobStack.size(); i++)
+		{
+			if (jobStack.at(i)->GetId() == currentJob->GetId()) {
+				jobStack.erase(jobStack.begin() + i);
+				break;
+			}
+
+		}
+		worker.FinishJob(currentJob);
 	}
 
 	int JobSystem::GetRandomWorker()

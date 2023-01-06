@@ -39,6 +39,8 @@ namespace JbSystem {
 		int _id;
 	};
 
+	using IgnoreJobCallback = std::function<bool(const JobId& proposedJob)>;
+
 	class Job {
 	public:
 		Job() = delete;
@@ -54,6 +56,9 @@ namespace JbSystem {
 			_basefunction(this);
 		}
 
+		void SetIgnoreCallback(const IgnoreJobCallback& callback);
+		const IgnoreJobCallback& GetIgnoreCallback() const;
+
 		static const JobId RequestUniqueID();
 
 	protected:
@@ -65,6 +70,7 @@ namespace JbSystem {
 		const Function _basefunction;
 		const DestructorFunction _destructorfunction;
 		const JobId _id;
+		IgnoreJobCallback _ignoreCallback;
 	};
 
 	//function with parameters
