@@ -164,6 +164,9 @@ namespace JbSystem {
 				wasActive = true;
 			}
 
+			if (wasActive)
+				continue;
+
 			// Let worker safely shutdown and complete active last job
 			for (JobSystemWorker& worker : _workers) {
 				worker.WaitForShutdown();
@@ -172,8 +175,10 @@ namespace JbSystem {
 			// All extra workers must have exited
 			_spawnedThreadsMutex.lock();
 			for (auto& extraWorker : _spawnedThreadsExecutingIgnoredJobs) {
-				if(extraWorker.second.joinable())
+				if (extraWorker.second.joinable()) {
 					extraWorker.second.join();
+					wasActive = true;
+				}
 			}
 			_spawnedThreadsMutex.unlock();
 
@@ -874,7 +879,9 @@ namespace JbSystem {
 				}
 				
 				// When lock was aquired we can wait for the other thread to exit
-				jobSystem->_spawnedThreadsExecutingIgnoredJobs.at(id).join();
+				std::thread& threadToJoin = jobSystem->_spawnedThreadsExecutingIgnoredJobs.at(id);
+				if(threadToJoin.joinable())
+					threadToJoin.join();
 				jobSystem->_spawnedThreadsExecutingIgnoredJobs.erase(id);
 				jobSystem->_spawnedThreadsMutex.unlock();
 			};

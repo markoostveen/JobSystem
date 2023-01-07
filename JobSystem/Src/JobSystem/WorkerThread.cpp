@@ -32,7 +32,7 @@ void JobSystemWorker::ThreadLoop() {
 
 
 		if (job != nullptr) {
-			_jobsystem->TryRunJob(*this, job);
+			_jobsystem->RunJob(*this, job);
 			_isBusy.store(false);
 			noWork = 0;
 			continue;
@@ -57,7 +57,7 @@ void JobSystemWorker::ThreadLoop() {
 		if (job != nullptr)
 		{
 			assert(randomWorker.IsJobScheduled(job->GetId()));
-			_jobsystem->TryRunJob(randomWorker, job);
+			_jobsystem->RunJob(randomWorker, job);
 			_isBusy.store(false);
 		}
 
