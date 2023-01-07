@@ -25,7 +25,7 @@ void JobSystemWorker::ThreadLoop() {
 			break;
 		}
 
-		Job* job = TryTakeJob();
+		Job* job = TryTakeJob(JobPriority::Low);
 		_isBusy.store(job != nullptr);
 
 		_incomingWorkLock.unlock();

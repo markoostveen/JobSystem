@@ -183,3 +183,15 @@ namespace JbSystem {
 		const DeconstructorCallback _deconstructorCallback;
 	};
 }
+
+// Add overload to make SimulatorId hashable for use in unordered_map
+namespace std {
+	template <>
+	struct hash<JbSystem::JobId>
+	{
+		std::size_t operator()(const JbSystem::JobId& k) const
+		{
+			return hash<std::int32_t>()(k.ID());
+		}
+	};
+}

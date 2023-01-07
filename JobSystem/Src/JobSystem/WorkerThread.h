@@ -31,7 +31,7 @@ namespace JbSystem {
 		void Start(); //Useful when thread became lost for some reason
 		int WorkerId();
 
-		Job* TryTakeJob(const JobPriority& maxTimeInvestment = JobPriority::High);
+		Job* TryTakeJob(const JobPriority& maxTimeInvestment);
 		void UnScheduleJob(const JobId& previouslyScheduledJob);
 		void ScheduleJob(const JobId& jobId);
 
@@ -97,7 +97,7 @@ namespace JbSystem {
 		JbSystem::mutex _jobsRequiringIgnoringMutex;
 		std::unordered_set<Job*> _jobsRequiringIgnoring;
 		JbSystem::mutex _pausedJobsMutex;
-		std::queue<PausedJob> _pausedJobs;
+		std::unordered_map<JobId, PausedJob> _pausedJobs;
 
 	};
 }

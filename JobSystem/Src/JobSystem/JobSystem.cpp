@@ -13,7 +13,7 @@ namespace JbSystem {
 
 
 	// Prevent wild recursion patterns
-	const int maxThreadDepth = 20;
+	const int maxThreadDepth = 5;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
 	static thread_local boost::container::small_vector<const Job*, sizeof(const Job*)* maxThreadDepth> jobStack; // stack of all jobs our current thread is executing
 	static thread_local bool allowedToLowerQueue = true;
@@ -137,9 +137,6 @@ namespace JbSystem {
 		Active = false;
 
 
-		//Get jobs finished while threads were stopping
-		auto allJobs = StealAllJobsFromWorkers();
-
 		bool wasActive = false;
 		do {
 			wasActive = false;
@@ -167,10 +164,8 @@ namespace JbSystem {
 		_spawnedThreadsMutex.unlock();
 
 		auto remainingJobs = StealAllJobsFromWorkers();
-		allJobs.insert(allJobs.begin(), remainingJobs.begin(), remainingJobs.end());
 
-
-		for (const auto& job : allJobs) {
+		for (const auto& job : remainingJobs) {
 			for (auto& worker : _workers) {
 				const JobId& id = job->GetId();
 				if (worker.IsJobScheduled(id))
@@ -180,7 +175,7 @@ namespace JbSystem {
 
 		_activeWorkerCount.store(0);
 		_workers.clear();
-		return allJobs;
+		return remainingJobs;
 	}
 
 	void JobSystem::WaitForAllJobs()
@@ -760,19 +755,23 @@ namespace JbSystem {
 
 	void JobSystem::RunJobInNewThread(JobSystemWorker& worker, Job*& currentJob)
 	{
+		JobId jobId = currentJob->GetId();
 		worker._pausedJobsMutex.lock();
-		worker._pausedJobs.push(JobSystemWorker::PausedJob(currentJob, worker));
+		worker._pausedJobs.emplace(jobId, JobSystemWorker::PausedJob(currentJob, worker));
 		worker._pausedJobsMutex.unlock();
 		
 
 		// Exit function when job was picked up in reasonal amount of time
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		worker._pausedJobsMutex.lock();
-		if (worker._pausedJobs.size() == 0) {
+		for (size_t i = 0; i < 1000; i++)
+		{
+			std::this_thread::sleep_for(std::chrono::microseconds(10));
+			worker._pausedJobsMutex.lock();
+			if (!worker._pausedJobs.contains(jobId)) {
+				worker._pausedJobsMutex.unlock();
+				return;
+			}
 			worker._pausedJobsMutex.unlock();
-			return;
 		}
-		worker._pausedJobsMutex.unlock();
 
 		// Start a new thread to execute a job to prevent deadlock
 		std::atomic<bool> startSign = false;
@@ -786,7 +785,7 @@ namespace JbSystem {
 
 			// Continue running jobs that might also be scheduled that normal workers cannot run
 			int idleTime = 0;
-			while(idleTime < 1000)
+			while(idleTime < 1000000)
 			{
 				// Find new job, but when non are left exit
 				selectedWorker->_pausedJobsMutex.lock();
@@ -802,8 +801,8 @@ namespace JbSystem {
 					selectedWorker = &_workers.at(currentWorkerIndex);
 					continue;
 				}
-				JobSystemWorker::PausedJob pausedJob = selectedWorker->_pausedJobs.front();
-				selectedWorker->_pausedJobs.pop();
+				JobSystemWorker::PausedJob pausedJob = selectedWorker->_pausedJobs.begin()->second;
+				selectedWorker->_pausedJobs.erase(pausedJob.AffectedJob->GetId());
 				selectedWorker->_pausedJobsMutex.unlock();
 
 				idleTime = 0;
@@ -911,13 +910,12 @@ namespace JbSystem {
 		{
 			JobSystemWorker& worker = _workers.at(i);
 			while (worker.ScheduledJobCount() > 0) {
-				Job* job = worker.TryTakeJob();
+				Job* job = worker.TryTakeJob(JobPriority::Low);
 				if (job == nullptr)
 					continue;
 
+				worker.UnScheduleJob(job->GetId());
 				jobs.emplace_back(job);
-				job = worker.TryTakeJob();
-
 			}
 		}
 		return jobs;
