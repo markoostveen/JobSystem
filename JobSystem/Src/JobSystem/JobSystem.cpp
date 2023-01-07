@@ -201,20 +201,24 @@ namespace JbSystem {
 
 	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
 	{
+		JobSystemWorker& worker = _workers.at(GetRandomWorker());
+		Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
+
+		if (primedJob == nullptr)
+			return;
+
 		if (threadDepth > maxThreadDepth) { // allow a maximum recursion depth of x
 
 			//Stack was full we might be able to start additional workers
 			StartAllWorkers();
 
 			// In case all options are done start additional thread to prevent a deadlock senario
-			std::jthread emergencyWorker = std::jthread([&]() { ExecuteJob(); });
+			RunJobInNewThread(worker, primedJob);
 			return;
 		}
 
 		// Try and run a job
 		threadDepth++;
-		JobSystemWorker& worker = _workers.at(GetRandomWorker());
-		Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
 		TryRunJob(worker, primedJob);
 		threadDepth--;
 
@@ -760,17 +764,18 @@ namespace JbSystem {
 		worker._pausedJobs.emplace(jobId, JobSystemWorker::PausedJob(currentJob, worker));
 		worker._pausedJobsMutex.unlock();
 		
+		//MaybeHelpLowerQueue(JobPriority::Low);
 
 		// Exit function when job was picked up in reasonal amount of time
-		for (size_t i = 0; i < 1000; i++)
+		for (size_t i = 0; i < 50; i++)
 		{
-			std::this_thread::sleep_for(std::chrono::microseconds(10));
 			worker._pausedJobsMutex.lock();
 			if (!worker._pausedJobs.contains(jobId)) {
 				worker._pausedJobsMutex.unlock();
 				return;
 			}
 			worker._pausedJobsMutex.unlock();
+			std::this_thread::sleep_for(std::chrono::microseconds(10));
 		}
 
 		// Start a new thread to execute a job to prevent deadlock
@@ -844,8 +849,6 @@ namespace JbSystem {
 	JobId JobSystem::Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority priority)
 	{
 		const JobId& id = newJob->GetId();
-
-		MaybeHelpLowerQueue(JobPriority::Low);
 
 		worker._modifyingThread.lock();
 		worker._scheduledJobsMutex.lock();
