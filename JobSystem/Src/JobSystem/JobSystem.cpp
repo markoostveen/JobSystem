@@ -33,6 +33,20 @@ namespace JbSystem {
 		return false;
 	}
 
+	bool IsProposedJobIgnoredByJobStack(const JobId& proposedJob) {
+		for (int i = 0; i < jobStack.size(); i++)
+		{
+			const Job* const& job = jobStack.at(i);
+			if (job->GetIgnoreCallback() == nullptr)
+				continue;
+
+			if (job->GetIgnoreCallback()(proposedJob))
+				return true;
+		}
+		return false;
+	}
+
+
 	JobSystem::JobSystem(int threadCount, WorkerThreadLoop workerLoop)
 	: _showStats(true) {
 		if (threadCount < 2)
@@ -705,8 +719,37 @@ namespace JbSystem {
 		if (currentJob == nullptr)
 			return false;
 
-		for (auto& currentWorker : _workers)
+		if (IsProposedJobIgnoredByJobStack(currentJob->GetId())) {
+			RunJobInNewThread(worker, currentJob);
+			return false;
+		}
+
+		int workerIndex = 0;
+		for (int i = 0; i < _workers.size(); i++)
 		{
+			auto& currentWorker = _workers.at(i);
+			if (&currentWorker == &worker)
+				workerIndex = i;
+		}
+
+		for (int i = workerIndex; i < _workers.size(); i++)
+		{
+			auto& currentWorker = _workers.at(i);
+			currentWorker._jobsRequiringIgnoringMutex.lock();
+			for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
+			{
+				// Do not execute the proposed job if it's forbidden by other jobs currently being executed
+				if (jobWithIgnores->GetIgnoreCallback()(currentJob->GetId())) {
+					currentWorker._jobsRequiringIgnoringMutex.unlock();
+					RunJobInNewThread(worker, currentJob);
+					return false;
+				}
+			}
+			currentWorker._jobsRequiringIgnoringMutex.unlock();
+		}
+		for (int i = 0; i < workerIndex; i++)
+		{
+			auto& currentWorker = _workers.at(i);
 			currentWorker._jobsRequiringIgnoringMutex.lock();
 			for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
 			{
@@ -764,10 +807,10 @@ namespace JbSystem {
 		worker._pausedJobs.emplace(jobId, JobSystemWorker::PausedJob(currentJob, worker));
 		worker._pausedJobsMutex.unlock();
 		
-		//MaybeHelpLowerQueue(JobPriority::Low);
+		MaybeHelpLowerQueue(JobPriority::Low);
 
 		// Exit function when job was picked up in reasonal amount of time
-		for (size_t i = 0; i < 50; i++)
+		for (size_t i = 0; i < 10000; i++)
 		{
 			worker._pausedJobsMutex.lock();
 			if (!worker._pausedJobs.contains(jobId)) {
@@ -775,7 +818,7 @@ namespace JbSystem {
 				return;
 			}
 			worker._pausedJobsMutex.unlock();
-			std::this_thread::sleep_for(std::chrono::microseconds(10));
+			std::this_thread::yield();
 		}
 
 		// Start a new thread to execute a job to prevent deadlock
@@ -789,29 +832,31 @@ namespace JbSystem {
 			int currentWorkerIndex = _workerCount;
 
 			// Continue running jobs that might also be scheduled that normal workers cannot run
-			int idleTime = 0;
-			while(idleTime < 1000000)
+			std::chrono::high_resolution_clock::time_point endpoint = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(500);
+			while(std::chrono::high_resolution_clock::now() < endpoint)
 			{
-				// Find new job, but when non are left exit
-				selectedWorker->_pausedJobsMutex.lock();
-				if (selectedWorker->_pausedJobs.size() == 0) {
-					selectedWorker->_pausedJobsMutex.unlock();
-					idleTime++;
+				for (size_t i = 0; i < 10; i++)
+				{
+					// Find new job, but when non are left exit
+					selectedWorker->_pausedJobsMutex.lock();
+					if (selectedWorker->_pausedJobs.size() == 0) {
+						selectedWorker->_pausedJobsMutex.unlock();
 
-					// Select a new worker
-					currentWorkerIndex++;
-					if (currentWorkerIndex >= _workerCount) {
-						currentWorkerIndex = 0;
+						// Select a new worker
+						currentWorkerIndex++;
+						if (currentWorkerIndex >= _workerCount) {
+							currentWorkerIndex = 0;
+						}
+						selectedWorker = &_workers.at(currentWorkerIndex);
+						continue;
 					}
-					selectedWorker = &_workers.at(currentWorkerIndex);
-					continue;
-				}
-				JobSystemWorker::PausedJob pausedJob = selectedWorker->_pausedJobs.begin()->second;
-				selectedWorker->_pausedJobs.erase(pausedJob.AffectedJob->GetId());
-				selectedWorker->_pausedJobsMutex.unlock();
+					JobSystemWorker::PausedJob pausedJob = selectedWorker->_pausedJobs.begin()->second;
+					selectedWorker->_pausedJobs.erase(pausedJob.AffectedJob->GetId());
+					selectedWorker->_pausedJobsMutex.unlock();
 
-				idleTime = 0;
-				RunJob(pausedJob.Worker, pausedJob.AffectedJob);
+					endpoint = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(500);
+					RunJob(pausedJob.Worker, pausedJob.AffectedJob);
+				}
 			}
 
 			std::thread::id currentThreadId = std::this_thread::get_id();
