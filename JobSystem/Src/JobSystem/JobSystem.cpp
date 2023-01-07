@@ -163,18 +163,24 @@ namespace JbSystem {
 				}
 				wasActive = true;
 			}
+
+			// Let worker safely shutdown and complete active last job
+			for (JobSystemWorker& worker : _workers) {
+				worker.WaitForShutdown();
+			}
+
+			// All extra workers must have exited
+			_spawnedThreadsMutex.lock();
+			for (auto& extraWorker : _spawnedThreadsExecutingIgnoredJobs) {
+				if(extraWorker.second.joinable())
+					extraWorker.second.join();
+			}
+			_spawnedThreadsMutex.unlock();
+
 		} while (wasActive);
 
-		// Let worker safely shutdown and complete active last job
-		for (JobSystemWorker& worker : _workers) {
-			worker.WaitForShutdown();
-		}
-
-		// All extra workers must have exited
 		_spawnedThreadsMutex.lock();
-		for (auto& extraWorker : _spawnedThreadsExecutingIgnoredJobs) {
-			extraWorker.second.join();
-		}
+		_spawnedThreadsExecutingIgnoredJobs.clear();
 		_spawnedThreadsMutex.unlock();
 
 		auto remainingJobs = StealAllJobsFromWorkers();
