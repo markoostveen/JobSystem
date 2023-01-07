@@ -125,7 +125,7 @@ namespace JbSystem {
 		/// <param name="callback">function to execute after jobs have been completed</param>
 		/// <returns></returns>
 		template<class ...Args>
-		void ScheduleAfterJobCompletion(const std::vector<JobId>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
+		void ScheduleAfterJobCompletion(const std::vector<JobId>& dependencies, const JobPriority& dependencyPriority, typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
 
 
 		/// <summary>
@@ -136,7 +136,7 @@ namespace JbSystem {
 		/// <summary>
 		/// Executes a scheduled job
 		/// </summary>
-		void ExecuteJob(const JobPriority maxTimeInvestment = JobPriority::Low);
+		void ExecuteJob();
 
 		int GetWorkerCount();
 		int GetActiveWorkerCount();
@@ -156,6 +156,11 @@ namespace JbSystem {
 		bool Active = false;
 		WorkerThreadLoop WorkerLoop;
 	private:
+
+		/// <summary>
+		/// Executes a scheduled job
+		/// </summary>
+		void ExecuteJob(const JobPriority maxTimeInvestment);
 
 		/// <summary>
 		/// Shutdown all worker threads
@@ -183,6 +188,7 @@ namespace JbSystem {
 
 		bool TryRunJob(JobSystemWorker& worker, Job*& currentJob);
 		void RunJob(JobSystemWorker& worker, Job*& currentJob);
+		void RunJobInNewThread(JobSystemWorker& worker, Job*& currentJob);
 
 		int GetRandomWorker();
 
@@ -219,6 +225,10 @@ namespace JbSystem {
 		std::atomic<bool> _preventIncomingScheduleCalls;
 
 		std::atomic<bool> _showStats;
+
+		// Deadlock prevention
+		JbSystem::mutex _spawnedThreadsMutex;
+		std::unordered_map<std::thread::id, std::thread> _spawnedThreadsExecutingIgnoredJobs;
 	};
 
 	template<class ...Args>
@@ -324,36 +334,34 @@ namespace JbSystem {
 	}
 
 	template<class ...Args>
-	inline void JobSystem::ScheduleAfterJobCompletion(const std::vector<JobId>& dependencies, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
+	inline void JobSystem::ScheduleAfterJobCompletion(const std::vector<JobId>& dependencies, const JobPriority& dependencyPriority, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
 	{
+		assert(dependencies.size() > 0);
+
 		struct DependenciesTag {};
 
-		auto rescheduleJob = [](auto& rescheduleCallback, auto& retryCallback, Job*& callback, JobSystem*& jobSystem, std::vector<JobId>*& dependencies, JobSystemWorker*& suggestedWorker) {
+		auto rescheduleJob = [](auto& rescheduleCallback, auto& retryCallback, Job*& callback, const JobPriority& reschedulePriority, JobSystem*& jobSystem, std::vector<JobId>*& dependencies, JobSystemWorker*& suggestedWorker) {
 
 			// Prerequsites not met, queueing async job to check back later
 			Job* rescheduleJob = JobSystem::CreateJobWithParams(retryCallback, rescheduleCallback, retryCallback,
-				callback, jobSystem, dependencies, suggestedWorker);
+				callback, reschedulePriority, jobSystem, dependencies, suggestedWorker);
 
 
 			jobSystem->RescheduleWorkerJobsFromInActiveWorkers();
-			jobSystem->MaybeHelpLowerQueue(JobPriority::High);
 			jobSystem->Schedule(rescheduleJob, JobPriority::Low);
 		};
 
-		auto jobScheduler = [](auto rescheduleCallback, auto retryCallback, Job* callback, JobSystem* jobSystem, std::vector<JobId>* dependencies, JobSystemWorker* suggestedJobWorker) -> void {
+		auto jobScheduler = [](auto rescheduleCallback, auto retryCallback, Job* callback, JobPriority reschedulePriority, JobSystem* jobSystem, std::vector<JobId>* dependencies, JobSystemWorker* suggestedJobWorker) -> void {
 			for (size_t i = 0; i < dependencies->size(); i++) {
 				if (!jobSystem->IsJobCompleted(dependencies->at(i), suggestedJobWorker)) {
-					if (i > 0) { // shrink the dependency array to reduce amount of jobs that need to be checked
-						dependencies->erase(dependencies->begin(), dependencies->begin() + i);
-					}
 
-					rescheduleCallback(rescheduleCallback, retryCallback, callback, jobSystem, dependencies, suggestedJobWorker);
+					rescheduleCallback(rescheduleCallback, retryCallback, callback, reschedulePriority, jobSystem, dependencies, suggestedJobWorker);
 					return;
 				}
 			}
 
 			//When all dependencies are completed
-			jobSystem->Schedule(callback, JobPriority::High);
+			jobSystem->Schedule(callback, reschedulePriority);
 			dependencies->~vector();
 			boost::singleton_pool<DependenciesTag, sizeof(std::vector<JobId>)>::free(dependencies);
 		};
@@ -362,8 +370,16 @@ namespace JbSystem {
 		auto jobDependencies = new(location) std::vector<JobId>({ dependencies });
 
 		Job* callbackJob = JobSystem::CreateJobWithParams(function, std::forward<Args>(args)...);
+		callbackJob->SetIgnoreCallback([jobDependencies = std::vector<JobId>({ dependencies })](const JobId& proposedJobId) {
+				for (const auto& dependencyId : jobDependencies) {
+					if (dependencyId == proposedJobId)
+						return true;
+				}
+				return false;
+			}
+		);
 
 		// run in sync, if dependencies have already completed we can immediatly schedule it
-		jobScheduler(rescheduleJob, jobScheduler, callbackJob, this, jobDependencies, nullptr);
+		jobScheduler(rescheduleJob, jobScheduler, callbackJob, dependencyPriority, this, jobDependencies, nullptr);
 	}
 }

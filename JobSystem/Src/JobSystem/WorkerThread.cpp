@@ -32,7 +32,7 @@ void JobSystemWorker::ThreadLoop() {
 
 
 		if (job != nullptr) {
-			_jobsystem->RunJob(*this, job);
+			_jobsystem->TryRunJob(*this, job);
 			_isBusy.store(false);
 			noWork = 0;
 			continue;
@@ -57,7 +57,7 @@ void JobSystemWorker::ThreadLoop() {
 		if (job != nullptr)
 		{
 			assert(randomWorker.IsJobScheduled(job->GetId()));
-			_jobsystem->RunJob(randomWorker, job);
+			_jobsystem->TryRunJob(randomWorker, job);
 			_isBusy.store(false);
 		}
 
@@ -317,4 +317,9 @@ bool JbSystem::JobSystemWorker::IsJobScheduled(const JobId& jobId)
 	bool contains = _scheduledJobs.contains(jobId.ID());
 	_scheduledJobsMutex.unlock();
 	return contains;
+}
+
+JbSystem::JobSystemWorker::PausedJob::PausedJob(Job* affectedJob, JobSystemWorker& worker)
+	: AffectedJob(affectedJob), Worker(worker)
+{
 }

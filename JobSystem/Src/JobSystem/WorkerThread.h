@@ -68,6 +68,13 @@ namespace JbSystem {
 
 	private:
 
+		struct PausedJob {
+			PausedJob(Job* affectedJob, JobSystemWorker& worker);
+
+			Job* AffectedJob;
+			JobSystemWorker& Worker;
+		};
+
 		JobSystem* _jobsystem;
 
 		std::atomic<bool> _shutdownRequested;
@@ -89,6 +96,8 @@ namespace JbSystem {
 		// DeadLock prevention
 		JbSystem::mutex _jobsRequiringIgnoringMutex;
 		std::unordered_set<Job*> _jobsRequiringIgnoring;
+		JbSystem::mutex _pausedJobsMutex;
+		std::queue<PausedJob> _pausedJobs;
 
 	};
 }
