@@ -192,7 +192,7 @@ namespace JbSystem {
 		/// <param name="workerId"></param>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		JobId Schedule(const int& workerId, Job* const& newjob, const JobPriority priority);
+		JobId Schedule(JobSystemWorker& worker, Job* const& newjob, const JobPriority priority);
 
 		void SafeRescheduleJob(Job* const& oldJob, JobSystemWorker& oldWorker);
 
@@ -219,10 +219,6 @@ namespace JbSystem {
 		std::atomic<bool> _preventIncomingScheduleCalls;
 
 		std::atomic<bool> _showStats;
-
-		// DeadLock prevention
-		JbSystem::mutex _jobsRequiringIgnoringMutex;
-		std::unordered_set<Job*> _jobsRequiringIgnoring;
 	};
 
 	template<class ...Args>
