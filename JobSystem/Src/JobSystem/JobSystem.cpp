@@ -16,7 +16,7 @@ namespace JbSystem {
 	const int maxThreadDepth = 20;
 	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
 	static thread_local boost::container::small_vector<const Job*, sizeof(const Job*)* maxThreadDepth> jobStack; // stack of all jobs our current thread is executing
-	
+
 	// Control Optimization cycles
 	const int maxOptimizeInCycles = maxThreadDepth * 10;
 	static thread_local int optimizeInCycles = 0;
@@ -225,12 +225,7 @@ namespace JbSystem {
 		Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
 
 		if (primedJob != nullptr) {
-			if (IsProposedJobIgnoredByJobStack(primedJob->GetId())) {
-				ExecuteJob(maxTimeInvestment);
-				return;
-			}
-
-			RunJob(worker, primedJob);
+			TryRunJob(worker, primedJob);
 		}
 		threadDepth--;
 
@@ -543,14 +538,14 @@ namespace JbSystem {
 			if (primedJob != nullptr) {
 
 				// In case the primed job is the job we are waiting for we must refuse this offer
-				if (JobInStack(primedJob->GetId()) || IsProposedJobIgnoredByJobStack(primedJob->GetId()))
+				if (JobInStack(primedJob->GetId()))
 				{
 					SafeRescheduleJob(primedJob, worker);
 					continue;
 				}
 
 				// Execute job
-				RunJob(worker, primedJob);
+				TryRunJob(worker, primedJob);
 			}
 		}
 
@@ -705,12 +700,56 @@ namespace JbSystem {
 		}
 	}
 
+	bool JobSystem::TryRunJob(JobSystemWorker& worker, Job*& currentJob)
+	{
+		if (currentJob == nullptr)
+			return false;
+
+		bool isIgnoredByLocalJobStack = IsProposedJobIgnoredByJobStack(currentJob->GetId());
+		if (isIgnoredByLocalJobStack)
+		{
+			SafeRescheduleJob(currentJob, worker);
+			return false;
+		}
+
+		// Extra scope to block less often
+		{
+			std::scoped_lock<JbSystem::mutex> lock(_jobsRequiringIgnoringMutex);
+			for (const auto& jobWithIgnores : _jobsRequiringIgnoring)
+			{
+				// Do not execute the proposed job if it's forbidden by other jobs currently being executed
+				if (jobWithIgnores->GetIgnoreCallback()(currentJob->GetId())) {
+					SafeRescheduleJob(currentJob, worker);
+					return false;
+				}
+			}
+		}
+
+		RunJob(worker, currentJob);
+		return true;
+	}
+
 	void JobSystem::RunJob(JobSystemWorker& worker, Job*& currentJob)
 	{
 		assert(!JobInStack(currentJob->GetId()));
 
 		jobStack.emplace_back(currentJob);
+		const IgnoreJobCallback& callback = currentJob->GetIgnoreCallback();
+		bool hasCallback = callback != nullptr;
+		if (hasCallback)
+		{
+			std::scoped_lock<JbSystem::mutex> lock(_jobsRequiringIgnoringMutex);
+			_jobsRequiringIgnoring.emplace(currentJob);
+		}
+
 		currentJob->Run();
+
+		if (hasCallback)
+		{
+			std::scoped_lock<JbSystem::mutex> lock(_jobsRequiringIgnoringMutex);
+			_jobsRequiringIgnoring.erase(currentJob);
+		}
+
 		for (size_t i = 0; i < jobStack.size(); i++)
 		{
 			if (jobStack.at(i)->GetId() == currentJob->GetId()) {

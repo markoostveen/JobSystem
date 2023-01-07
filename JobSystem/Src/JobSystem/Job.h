@@ -39,6 +39,9 @@ namespace JbSystem {
 		int _id;
 	};
 
+	/// <summary>
+	/// Callback for the jobsystem to call into when checking if it's okay to execute another job when this job is being executed
+	/// </summary>
 	using IgnoreJobCallback = std::function<bool(const JobId& proposedJob)>;
 
 	class Job {

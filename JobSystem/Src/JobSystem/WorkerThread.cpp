@@ -32,8 +32,7 @@ void JobSystemWorker::ThreadLoop() {
 
 
 		if (job != nullptr) {
-			job->Run();
-			FinishJob(job);
+			_jobsystem->RunJob(*this, job);
 			_isBusy.store(false);
 			noWork = 0;
 			continue;
@@ -205,6 +204,7 @@ Job* JbSystem::JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
 bool JbSystem::JobSystemWorker::IsJobInQueue(const JobId& jobId) {
 
 	const int& id = jobId.ID();
+	std::scoped_lock<JbSystem::mutex> lock(_modifyingThread);
 	for (const auto& highPriorityJob : _highPriorityTaskQueue)
 	{
 		if (highPriorityJob->GetId().ID() == id)
@@ -237,10 +237,11 @@ size_t JbSystem::JobSystemWorker::ScheduledJobCount()
 void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJob)
 {
 	const int& id = previouslyScheduledJob.ID();
+	assert(!IsJobInQueue(id)); // In case the task is still scheduled then it wasn't removed properly
+
 	_modifyingThread.lock();
 	_scheduledJobsMutex.lock();
 	assert(_scheduledJobs.contains(id));
-	assert(!IsJobInQueue(id)); // In case the task is still scheduled then it wasn't removed properly
 	_scheduledJobs.erase(id);
 	_scheduledJobsMutex.unlock();
 	_modifyingThread.unlock();

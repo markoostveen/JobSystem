@@ -181,7 +181,8 @@ namespace JbSystem {
 		bool RescheduleWorkerJobs(JobSystemWorker& worker);
 		void RescheduleWorkerJobsFromInActiveWorkers();
 
-		static void RunJob(JobSystemWorker& worker, Job*& currentJob);
+		bool TryRunJob(JobSystemWorker& worker, Job*& currentJob);
+		void RunJob(JobSystemWorker& worker, Job*& currentJob);
 
 		int GetRandomWorker();
 
@@ -218,6 +219,10 @@ namespace JbSystem {
 		std::atomic<bool> _preventIncomingScheduleCalls;
 
 		std::atomic<bool> _showStats;
+
+		// DeadLock prevention
+		JbSystem::mutex _jobsRequiringIgnoringMutex;
+		std::unordered_set<Job*> _jobsRequiringIgnoring;
 	};
 
 	template<class ...Args>
