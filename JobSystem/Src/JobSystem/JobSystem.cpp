@@ -746,7 +746,7 @@ namespace JbSystem {
 		for (int i = workerIndex; i < _workers.size(); i++)
 		{
 			auto& currentWorker = _workers.at(i);
-			currentWorker._jobsRequiringIgnoringMutex.lock();
+			currentWorker._jobsRequiringIgnoringMutex.lock(); // TODO optimize access to mutex, big bottleneck
 			for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
 			{
 				// Do not execute the proposed job if it's forbidden by other jobs currently being executed
@@ -761,7 +761,7 @@ namespace JbSystem {
 		for (int i = 0; i < workerIndex; i++)
 		{
 			auto& currentWorker = _workers.at(i);
-			currentWorker._jobsRequiringIgnoringMutex.lock();
+			currentWorker._jobsRequiringIgnoringMutex.lock(); // TODO optimize access to mutex, big bottleneck
 			for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
 			{
 				// Do not execute the proposed job if it's forbidden by other jobs currently being executed
@@ -1010,5 +1010,10 @@ namespace JbSystem {
 			ExecuteJob(priority);
 		}
 		maybeLowerWorkDepth--;
+	}
+	
+	JobId JobSystem::Schedule(const int& workerId, Job* const& newJob, const JobPriority priority)
+	{
+		return Schedule(_workers.at(workerId), newJob, priority);
 	}
 }

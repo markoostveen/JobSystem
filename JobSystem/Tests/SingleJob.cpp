@@ -21,7 +21,7 @@ JobId StartIncremenJob(std::vector<int>* data) {
 			std::cout << "Executing Job" << std::endl;
 			for (size_t i = 0; i < data->size(); i++)
 			{
-				data->emplace_back(i);
+				data->emplace_back(int(i));
 			}
 		}, data);
 

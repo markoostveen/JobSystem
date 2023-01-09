@@ -198,7 +198,15 @@ namespace JbSystem {
 		/// <param name="workerId"></param>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		JobId Schedule(JobSystemWorker& worker, Job* const& newjob, const JobPriority priority);
+		JobId Schedule(const int& workerId, Job* const& newJob, const JobPriority priority);
+
+		/// <summary>
+		/// Schedules a job in a specific worker
+		/// </summary>
+		/// <param name="workerId"></param>
+		/// <param name="newjob"></param>
+		/// <returns></returns>
+		JobId Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority priority);
 
 		void SafeRescheduleJob(Job* const& oldJob, JobSystemWorker& oldWorker);
 
@@ -300,8 +308,8 @@ namespace JbSystem {
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
 		const int workerId = ScheduleFutureJob(job);
 
-		WaitForJobCompletion(dependencyArray,
-			[](auto jobSystem, auto workerId, auto callbackJob, auto priority)
+		ScheduleAfterJobCompletion(dependencyArray, priority,
+			[](JobSystem* jobSystem, int workerId, Job* callbackJob, JobPriority priority)
 			{
 				jobSystem->Schedule(workerId, callbackJob, priority);
 			}, this, workerId, job, priority);
