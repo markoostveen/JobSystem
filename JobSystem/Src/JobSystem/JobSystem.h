@@ -138,6 +138,11 @@ namespace JbSystem {
 		/// </summary>
 		void ExecuteJob();
 
+		/// <summary>
+		/// Executes a scheduled job
+		/// </summary>
+		void ExecuteJob(const JobPriority maxTimeInvestment);
+
 		int GetWorkerCount();
 		int GetActiveWorkerCount();
 		int GetWorkerId(JobSystemWorker* worker);
@@ -157,10 +162,6 @@ namespace JbSystem {
 		WorkerThreadLoop WorkerLoop;
 	private:
 
-		/// <summary>
-		/// Executes a scheduled job
-		/// </summary>
-		void ExecuteJob(const JobPriority maxTimeInvestment);
 
 		/// <summary>
 		/// Shutdown all worker threads
