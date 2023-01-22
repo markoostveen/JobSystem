@@ -85,7 +85,7 @@ namespace JbSystem {
 
 		//Change amount of worker threads
 		_workerCount = threadCount;
-		_activeWorkerCount.store(_workerCount);
+		_activeWorkerCount.store(2);
 		_workers.reserve(threadCount);
 		_preventIncomingScheduleCalls.store(false);
 		for (int i = 0; i < _workerCount; i++)
@@ -495,6 +495,20 @@ namespace JbSystem {
 	{
 		JobSystemWorker* suggestedWorker = nullptr;
 		return IsJobCompleted(jobId, suggestedWorker);
+	}
+
+	bool JobSystem::AreJobsCompleted(std::vector<JobId>& jobIds)
+	{
+		for (size_t i = 0; i < jobIds.size(); i++)
+		{
+			const JobId& jobId = jobIds.at(i);
+			if (!IsJobCompleted(jobId))
+			{
+				jobIds.erase(jobIds.begin(), jobIds.begin() + i);
+				return false;
+			}
+		}
+		return true;
 	}
 
 	bool JobSystem::IsJobCompleted(const JobId& jobId, JobSystemWorker*& jobWorker)

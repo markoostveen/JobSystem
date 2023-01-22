@@ -97,6 +97,13 @@ namespace JbSystem {
 		bool IsJobCompleted(const JobId& jobId);
 
 		/// <summary>
+		/// Will check if jobs are completed, if they are they will be removed from the given vector
+		/// </summary>
+		/// <param name="jobIds"></param>
+		/// <returns>weather or not the job was completed</returns>
+		bool AreJobsCompleted(std::vector<JobId>& jobIds);
+
+		/// <summary>
 		/// Caller will help execute jobs until the job with specified Id is completed
 		/// </summary>
 		/// <param name="jobId"></param>
