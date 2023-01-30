@@ -252,6 +252,7 @@ namespace JbSystem {
 
 	void JobSystem::ExecuteJob()
 	{
+		StartAllWorkers();
 		ExecuteJob(JobPriority::Low);
 	}
 
