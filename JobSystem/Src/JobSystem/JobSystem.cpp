@@ -7,7 +7,7 @@
 #include "boost/container/small_vector.hpp"
 #include <boost/range/adaptor/reversed.hpp>
 
-#include <format>
+#include <string>
 
 namespace JbSystem {
 
@@ -689,7 +689,7 @@ namespace JbSystem {
 		if (_showStats.load())
 		{
 
-			std::string outputString = std::format("\33[2K \r JobSystem Workers: {}, Accepting new jobs: {}, total Jobs: {}  Average Jobs: {}\r", workerCount, int(!_preventIncomingScheduleCalls.load()), totalJobs, averageJobsPerWorker);
+			std::string outputString = "\33[2K \r JobSystem Workers: " + std::to_string(workerCount) + ", Accepting new jobs: " + std::to_string(int(!_preventIncomingScheduleCalls.load())) + ", total Jobs: " + std::to_string(totalJobs) + "  Average Jobs: " + std::to_string(averageJobsPerWorker) + "\r";
 			std::cout << outputString;
 		}
 		
