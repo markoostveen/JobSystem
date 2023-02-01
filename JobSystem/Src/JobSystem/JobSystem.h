@@ -150,6 +150,8 @@ namespace JbSystem {
 		/// </summary>
 		void ExecuteJob(const JobPriority maxTimeInvestment);
 
+		void StartAllWorkers();
+
 		int GetWorkerCount();
 		int GetActiveWorkerCount();
 		int GetWorkerId(JobSystemWorker* worker);
@@ -188,8 +190,6 @@ namespace JbSystem {
 		void Cleanup();
 
 		void OptimizePerformance();
-
-		void StartAllWorkers();
 
 		bool RescheduleWorkerJobs(JobSystemWorker& worker);
 		void RescheduleWorkerJobsFromInActiveWorkers();

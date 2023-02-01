@@ -709,8 +709,9 @@ namespace JbSystem {
 		int workerCount = _activeWorkerCount.load();
 		for (int i = 0; i < workerCount; i++)
 		{
-			if (!_workers[i].IsRunning())
-				_workers[i].Start();
+			auto& worker = _workers.at(i);
+			if (!worker.IsRunning())
+				worker.Start();
 		}
 	}
 
