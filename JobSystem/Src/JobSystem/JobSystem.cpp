@@ -747,7 +747,7 @@ namespace JbSystem {
 		if (currentJob == nullptr)
 			return false;
 
-		if (IsProposedJobIgnoredByJobStack(currentJob->GetId())) {
+		if (IsProposedJobIgnoredByJobStack(currentJob->GetId()) || currentJob->GetEmptyStackRequired()) {
 			RunJobInNewThread(worker, currentJob);
 			return false;
 		}

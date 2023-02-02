@@ -62,6 +62,9 @@ namespace JbSystem {
 		void SetIgnoreCallback(const IgnoreJobCallback& callback);
 		const IgnoreJobCallback& GetIgnoreCallback() const;
 
+		void SetEmptyStackRequired(bool emptyStackRequired);
+		const bool& GetEmptyStackRequired();
+
 		static const JobId RequestUniqueID();
 
 	protected:
@@ -74,6 +77,7 @@ namespace JbSystem {
 		const DestructorFunction _destructorfunction;
 		const JobId _id;
 		IgnoreJobCallback _ignoreCallback;
+		bool _requireEmptyJobStack;
 	};
 
 	//function with parameters

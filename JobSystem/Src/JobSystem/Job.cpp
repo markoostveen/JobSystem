@@ -22,13 +22,23 @@ const IgnoreJobCallback& JbSystem::Job::GetIgnoreCallback() const
 	return _ignoreCallback;
 }
 
+void JbSystem::Job::SetEmptyStackRequired(bool emptyStackRequired)
+{
+	_requireEmptyJobStack = emptyStackRequired;
+}
+
+const bool& JbSystem::Job::GetEmptyStackRequired()
+{
+	return _requireEmptyJobStack;
+}
+
 const JobId JbSystem::Job::RequestUniqueID()
 {
 	return JobId{ Identifier++ };
 }
 
 JbSystem::Job::Job(const JobId& id, const Function& callback, const DestructorFunction& destructorfunction)
-	: _basefunction(callback), _destructorfunction(destructorfunction), _id(id), _ignoreCallback(nullptr) {
+	: _basefunction(callback), _destructorfunction(destructorfunction), _id(id), _ignoreCallback(nullptr), _requireEmptyJobStack(false) {
 }
 
 JbSystem::JobId::JobId(const int& Id)
