@@ -577,6 +577,7 @@ namespace JbSystem {
 
 				waitingPeriod = 0;
 				RescheduleWorkerJobsFromInActiveWorkers();
+				StartAllWorkers();
 			}
 		}
 
