@@ -333,10 +333,10 @@ namespace JbSystem {
 		auto workerIds = BatchScheduleFutureJob(newjobs);
 
 		WaitForJobCompletion(dependencyArray,
-			[](auto jobSystem, auto workerIds, auto callbackJobs)
+			[](auto jobSystem, auto workerIds, auto callbackJobs, JobPriority priority)
 			{
-				jobSystem->Schedule(workerIds, callbackJobs);
-			}, this, workerIds, newjobs);
+				jobSystem->Schedule(workerIds, callbackJobs, priority);
+			}, this, workerIds, newjobs, priority);
 
 		std::vector<JobId> jobIds;
 		size_t jobCount = newjobs.size();
