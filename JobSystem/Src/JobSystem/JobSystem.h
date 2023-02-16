@@ -361,7 +361,7 @@ namespace JbSystem {
 			// Prerequsites not met, queueing async job to check back later
 			Job* rescheduleJob = JobSystem::CreateJobWithParams(retryCallback, rescheduleCallback, retryCallback,
 				callback, reschedulePriority, jobSystem, dependencies, suggestedWorker);
-
+            rescheduleJob->SetEmptyStackRequired(true);
 
 			jobSystem->RescheduleWorkerJobsFromInActiveWorkers();
 			jobSystem->Schedule(rescheduleJob, JobPriority::Low);
