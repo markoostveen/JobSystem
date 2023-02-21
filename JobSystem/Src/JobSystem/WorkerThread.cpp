@@ -12,75 +12,94 @@ void JobSystemWorker::ThreadLoop() {
 	std::unique_lock ul(_isRunningMutex);
 	//std::cout << "Worker has started" << std::endl;
 
+	std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
+	bool wasJobCompleted = false;
 	int noWork = 0;
-
 	while (true) {
 
-
-		_incomingWorkLock.lock();
+		_isBusy.store(true);
 
 		// In case shutdown of shutdown of jobsystem
 		if (_shutdownRequested.load()) {
-			_incomingWorkLock.unlock();
+			_isBusy.store(false);
 			break;
 		}
 
-		Job* job = TryTakeJob(JobPriority::Low);
-		_isBusy.store(job != nullptr);
-
-		_incomingWorkLock.unlock();
+		Job* job = nullptr;
+		for (size_t i = 0; i < 3; i++)
+		{
+			job = TryTakeJob(JobPriority::Low);
+			if (job != nullptr)
+				break;
+		}
 
 
 		if (job != nullptr) {
 			_jobsystem->RunJob(*this, job);
 			_isBusy.store(false);
-			noWork = 0;
+			wasJobCompleted = true;
 			continue;
 		}
 
-		_incomingWorkLock.lock();
+		noWork++;
+
+		if (noWork < 100)
+			continue;
 
 		// Take a possible job from a random worker
-		JobSystemWorker& randomWorker = _jobsystem->_workers[_jobsystem->GetRandomWorker()];
-		job = _jobsystem->TakeJobFromWorker(randomWorker, JobPriority::Low);
+		JobSystemWorker& randomWorker = _jobsystem->_workers.at(_jobsystem->GetRandomWorker());
+
+		for (size_t i = 0; i < 5; i++)
+		{
+			job = _jobsystem->TakeJobFromWorker(randomWorker, JobPriority::Low);
+			if (job != nullptr)
+				break;
+		}
 
 		// In case shutdown of shutdown of jobsystem
 		if (_shutdownRequested.load()) {
-			_incomingWorkLock.unlock();
+			_isBusy.store(false);
 			break;
 		}
-
-		_isBusy.store(job != nullptr);
-
-		_incomingWorkLock.unlock();
 
 		if (job != nullptr)
 		{
 			assert(randomWorker.IsJobScheduled(job->GetId()));
 			_jobsystem->RunJob(randomWorker, job);
 			_isBusy.store(false);
+			wasJobCompleted = true;
+		}
+			
+		if (wasJobCompleted)
+		{
+			noWork = 0;
+			wasJobCompleted = false;
+			startTime = std::chrono::high_resolution_clock::now();
+			continue;
 		}
 
-		noWork++;
+		if ((std::chrono::high_resolution_clock::now() - startTime) <= std::chrono::milliseconds(25))
+		{
+			noWork = 0;
+			continue;
+		}
 
-
-		if (noWork > 500000) {
-
-			// Check if other works are active
-			bool otherWorkersActive = false;
-			for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
-			{
-				JobSystemWorker& worker = _jobsystem->_workers[i];
-				if (worker.IsRunning() && this != &worker) {
-					otherWorkersActive = true;
-					continue;
-				}
+		_isBusy.store(false);
+		
+		// Check if other works are active
+		bool otherWorkersActive = false;
+		for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
+		{
+			JobSystemWorker& worker = _jobsystem->_workers[i];
+			if (worker.IsRunning() && this != &worker) {
+				otherWorkersActive = true;
+				continue;
 			}
+		}
 
-			// Do not shutdown in case there are no other workers
-			if (otherWorkersActive || !_jobsystem->Active) {
-				break;
-			}
+		// Do not shutdown in case there are no other workers
+		if (otherWorkersActive || !_jobsystem->Active) {
+			break;
 		}
 	}
 
@@ -95,10 +114,7 @@ void JbSystem::JobSystemWorker::RequestShutdown()
 
 bool JbSystem::JobSystemWorker::Busy()
 {
-	_incomingWorkLock.lock();
-	bool result = _isBusy.load();
-	_incomingWorkLock.unlock();
-	return result;
+	return _isBusy.load();
 }
 
 JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
@@ -106,7 +122,7 @@ JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
 	_modifyingThread(), _highPriorityTaskQueue(), _normalPriorityTaskQueue(), _lowPriorityTaskQueue(),
 	_scheduledJobsMutex(), _scheduledJobs(),
 	_isRunningMutex(), _worker(),
-	_incomingWorkLock(), _isBusy(false)
+	_isBusy(false)
 {
 }
 

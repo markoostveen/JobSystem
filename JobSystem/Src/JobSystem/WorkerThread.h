@@ -90,7 +90,6 @@ namespace JbSystem {
 		mutex _isRunningMutex;
 		std::thread _worker;
 
-		mutex _incomingWorkLock;
 		std::atomic<bool> _isBusy;
 
 		// DeadLock prevention
