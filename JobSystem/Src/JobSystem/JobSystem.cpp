@@ -154,13 +154,11 @@ namespace JbSystem {
 		bool wasActive = false;
 		do {
 			wasActive = false;
-			for (JobSystemWorker& worker : boost::adaptors::reverse(_workers)) {
-				if (!worker.IsRunning())
+			for (JobSystemWorker& worker : _workers) {
+				if (!worker._isRunning.load())
 					continue;
 
-				if (!worker.Busy()) {
-					worker.RequestShutdown();
-				}
+				worker.RequestShutdown();
 				wasActive = true;
 			}
 
@@ -211,7 +209,7 @@ namespace JbSystem {
 
 			wasActive = false;
 			for (JobSystemWorker& worker : boost::adaptors::reverse(_workers)) {
-				if (!worker.IsRunning())
+				if (!worker.IsActive())
 					continue;
 
 				if (!worker.Busy()) {
@@ -642,7 +640,7 @@ namespace JbSystem {
 		for (int i = 0; i < _workerCount; i++)
 		{
 			JobSystemWorker& worker = _workers[i];
-			if (!worker.IsRunning()) {
+			if (!worker.IsActive()) {
 				votedWorkers--;
 				continue;
 			}
@@ -683,7 +681,7 @@ namespace JbSystem {
 		{
 			JobSystemWorker& worker = _workers.at(i);
 
-			if (!worker.IsRunning())
+			if (!worker.IsActive())
 				worker.Start();
 		}
 
@@ -695,9 +693,9 @@ namespace JbSystem {
 		}
 		
 		// In case worker 0 or 1 has stopped make sure to restart it
-		if (!_workers.at(0).IsRunning())
+		if (!_workers.at(0).IsActive())
 			_workers.at(0).Start();
-		if (!_workers.at(1).IsRunning())
+		if (!_workers.at(1).IsActive())
 			_workers.at(1).Start();
 
 		// Reschedule jobs already inside inactive workers
@@ -711,7 +709,7 @@ namespace JbSystem {
 		for (int i = 0; i < workerCount; i++)
 		{
 			auto& worker = _workers.at(i);
-			if (!worker.IsRunning())
+			if (!worker.IsActive())
 				worker.Start();
 		}
 	}
@@ -955,7 +953,7 @@ namespace JbSystem {
 
 		while (true) {
 			// Try to schedule in either one of the required threads, in case it's not possible throw error
-			if (!oldWorker.IsRunning())
+			if (!oldWorker.IsActive())
 				oldWorker.Start();
 
 			assert(!oldWorker.IsJobInQueue(id));

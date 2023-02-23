@@ -26,7 +26,7 @@ namespace JbSystem {
 		/// there might be a delay in thread actually exiting be carefull
 		/// </summary>
 		/// <returns></returns>
-		bool IsRunning();
+		bool IsActive();
 		void WaitForShutdown();
 		void Start(); //Useful when thread became lost for some reason
 		int WorkerId();
@@ -58,6 +58,7 @@ namespace JbSystem {
 		bool IsJobScheduled(const JobId& jobId);
 
 		void ThreadLoop();
+		void KeepAliveLoop();
 
 		void RequestShutdown();
 
@@ -88,6 +89,7 @@ namespace JbSystem {
 		std::unordered_set<int> _scheduledJobs;
 
 		mutex _isRunningMutex;
+		std::atomic<bool> _isRunning;
 		std::thread _worker;
 
 		std::atomic<bool> _isBusy;

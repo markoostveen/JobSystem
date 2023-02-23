@@ -9,7 +9,6 @@
 using namespace JbSystem;
 
 void JobSystemWorker::ThreadLoop() {
-	std::unique_lock ul(_isRunningMutex);
 	//std::cout << "Worker has started" << std::endl;
 
 	std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
@@ -18,12 +17,6 @@ void JobSystemWorker::ThreadLoop() {
 	while (true) {
 
 		_isBusy.store(true);
-
-		// In case shutdown of shutdown of jobsystem
-		if (_shutdownRequested.load()) {
-			_isBusy.store(false);
-			break;
-		}
 
 		Job* job = nullptr;
 		for (size_t i = 0; i < 3; i++)
@@ -56,12 +49,6 @@ void JobSystemWorker::ThreadLoop() {
 				break;
 		}
 
-		// In case shutdown of shutdown of jobsystem
-		if (_shutdownRequested.load()) {
-			_isBusy.store(false);
-			break;
-		}
-
 		if (job != nullptr)
 		{
 			assert(randomWorker.IsJobScheduled(job->GetId()));
@@ -91,7 +78,7 @@ void JobSystemWorker::ThreadLoop() {
 		for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
 		{
 			JobSystemWorker& worker = _jobsystem->_workers[i];
-			if (worker.IsRunning() && this != &worker) {
+			if (worker.IsActive() && this != &worker) {
 				otherWorkersActive = true;
 				continue;
 			}
@@ -103,8 +90,22 @@ void JobSystemWorker::ThreadLoop() {
 		}
 	}
 
-	Active.store(false);
 	//std::cout << "Worker has exited!" << std::endl;
+}
+
+void JbSystem::JobSystemWorker::KeepAliveLoop()
+{
+	std::unique_lock ul(_isRunningMutex);
+	_isRunning.store(true);
+	while (!_shutdownRequested.load()) {
+		if (Active)
+			_jobsystem->WorkerLoop(this);
+
+		Active.store(false);
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(250));
+	}
+	_isRunning.store(false);
 }
 
 void JbSystem::JobSystemWorker::RequestShutdown()
@@ -118,12 +119,13 @@ bool JbSystem::JobSystemWorker::Busy()
 }
 
 JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
-	: _jobsystem(jobsystem), Active(false), _shutdownRequested(false),
+	: _jobsystem(jobsystem), Active(false), _isRunning(false), _shutdownRequested(false),
 	_modifyingThread(), _highPriorityTaskQueue(), _normalPriorityTaskQueue(), _lowPriorityTaskQueue(),
 	_scheduledJobsMutex(), _scheduledJobs(),
 	_isRunningMutex(), _worker(),
 	_isBusy(false)
 {
+	_worker = std::thread([](JobSystemWorker* worker) { worker->KeepAliveLoop(); }, this);
 }
 
 JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
@@ -134,11 +136,16 @@ JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
 
 JbSystem::JobSystemWorker::~JobSystemWorker()
 {
-	if (_worker.joinable())
-		_worker.join();
+	if (_worker.get_id() != std::thread::id()) {
+		_shutdownRequested.store(true);
+		if (_worker.joinable())
+			_worker.join();
+		else
+			_worker.detach();
+	}
 }
 
-bool JobSystemWorker::IsRunning()
+bool JobSystemWorker::IsActive()
 {
 	return Active.load();
 }
@@ -153,22 +160,10 @@ void JobSystemWorker::Start()
 	_jobsystem->OptimizePerformance(); // Determin best scaling options
 
 	_modifyingThread.lock();
-	if (IsRunning()) {
-		_modifyingThread.unlock();
-		return;
-	}
 
-	_shutdownRequested.store(false);
-	Active.store(true);
+	if(!_shutdownRequested.load())
+		Active.store(true);
 
-
-	if (_worker.get_id() != std::thread::id()) {
-		if (_worker.joinable())
-			_worker.join();
-		else
-			_worker.detach();
-	}
-	_worker = std::thread([](JobSystemWorker* worker){ worker->_jobsystem->WorkerLoop(worker); }, this);
 	_modifyingThread.unlock();
 }
 
@@ -277,7 +272,7 @@ void JbSystem::JobSystemWorker::ScheduleJob(const JobId& jobId)
 
 bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority priority)
 {
-	if (!IsRunning()) {
+	if (!IsActive()) {
 		return false;
 	}
 
