@@ -230,6 +230,7 @@ namespace JbSystem {
 		void MaybeHelpLowerQueue(const JobPriority& priority);
 
 		std::atomic<int> _activeWorkerCount = 0;
+		const int _minimumActiveWorkers = 3;
 		int _workerCount = 0;
 		std::vector<JobSystemWorker> _workers;
 

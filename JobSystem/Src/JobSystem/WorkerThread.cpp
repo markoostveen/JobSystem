@@ -98,13 +98,14 @@ void JbSystem::JobSystemWorker::KeepAliveLoop()
 	std::unique_lock ul(_isRunningMutex);
 	_isRunning.store(true);
 	while (!_shutdownRequested.load()) {
-		if (Active)
-			_jobsystem->WorkerLoop(this);
+		_jobsystem->WorkerLoop(this);
 
-		Active.store(false);
-
+#ifdef JBSYSTEM_KEEP_ALIVE
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#endif
 	}
+	// This only gets hit when while loop breaks
+	Active.store(false);
 	_isRunning.store(false);
 }
 
@@ -161,10 +162,30 @@ void JobSystemWorker::Start()
 
 	_modifyingThread.lock();
 
+#ifndef JBSYSTEM_KEEP_ALIVE
+	if (IsActive() || _shutdownRequested.load()) {
+		_modifyingThread.unlock();
+		return;
+	}
+
+	_shutdownRequested.store(false);
+	Active.store(true);
+
+
+	if (_worker.get_id() != std::thread::id()) {
+		if (_worker.joinable())
+			_worker.join();
+		else
+			_worker.detach();
+	}
+	_worker = std::thread([](JobSystemWorker* worker) { worker->_jobsystem->WorkerLoop(worker); }, this);
+#else
 	if(!_shutdownRequested.load())
 		Active.store(true);
+#endif
 
 	_modifyingThread.unlock();
+
 }
 
 int JbSystem::JobSystemWorker::WorkerId()

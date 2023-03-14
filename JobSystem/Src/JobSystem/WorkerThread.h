@@ -58,7 +58,6 @@ namespace JbSystem {
 		bool IsJobScheduled(const JobId& jobId);
 
 		void ThreadLoop();
-		void KeepAliveLoop();
 
 		void RequestShutdown();
 
@@ -75,6 +74,8 @@ namespace JbSystem {
 			Job* AffectedJob;
 			JobSystemWorker& Worker;
 		};
+
+		void KeepAliveLoop();
 
 		JobSystem* _jobsystem;
 

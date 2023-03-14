@@ -49,8 +49,8 @@ namespace JbSystem {
 
 	JobSystem::JobSystem(int threadCount, WorkerThreadLoop workerLoop)
 	: _showStats(true) {
-		if (threadCount < 2)
-			threadCount = 2;
+		if (threadCount < _minimumActiveWorkers)
+			threadCount = _minimumActiveWorkers;
 		WorkerLoop = workerLoop;
 		ReConfigure(threadCount);
 	}
@@ -67,7 +67,7 @@ namespace JbSystem {
 		if (threadCount <= 1) {
 			std::cout << "JobSystem cannot start with 0-1 workers..." << std::endl;
 			std::cout << "Therefor it has been started with 2 workers" << std::endl;
-			ReConfigure(2);
+			ReConfigure(_minimumActiveWorkers);
 			return;
 		}
 
@@ -85,7 +85,7 @@ namespace JbSystem {
 
 		//Change amount of worker threads
 		_workerCount = threadCount;
-		_activeWorkerCount.store(2);
+		_activeWorkerCount.store(_minimumActiveWorkers);
 		_workers.reserve(threadCount);
 		_preventIncomingScheduleCalls.store(false);
 		for (int i = 0; i < _workerCount; i++)
@@ -95,7 +95,7 @@ namespace JbSystem {
 		}
 
 		// Start critical minimum workers, others will start when job queue grows
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < _minimumActiveWorkers; i++)
 		{
 			// set callback function for worker threads to call the execute job on the job system
 			_workers[i].Start();
@@ -671,7 +671,7 @@ namespace JbSystem {
 				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
 			}
 		}
-		else if (_activeWorkerCount > 2) {
+		else if (_activeWorkerCount > _minimumActiveWorkers) {
 			_activeWorkerCount.store(_activeWorkerCount.load() - 1);
 		}
 
@@ -697,6 +697,8 @@ namespace JbSystem {
 			_workers.at(0).Start();
 		if (!_workers.at(1).IsActive())
 			_workers.at(1).Start();
+		if (!_workers.at(2).IsActive())
+			_workers.at(2).Start();
 
 		// Reschedule jobs already inside inactive workers
 		RescheduleWorkerJobsFromInActiveWorkers();
@@ -709,6 +711,8 @@ namespace JbSystem {
 		for (int i = 0; i < workerCount; i++)
 		{
 			auto& worker = _workers.at(i);
+			worker._shutdownRequested.store(false);
+
 			if (!worker.IsActive())
 				worker.Start();
 		}
