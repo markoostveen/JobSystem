@@ -102,6 +102,8 @@ void JbSystem::JobSystemWorker::KeepAliveLoop()
 
 #ifdef JBSYSTEM_KEEP_ALIVE
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#else
+		break;
 #endif
 	}
 	// This only gets hit when while loop breaks
@@ -168,16 +170,15 @@ void JobSystemWorker::Start()
 		return;
 	}
 
-	_shutdownRequested.store(false);
-	Active.store(true);
-
-
 	if (_worker.get_id() != std::thread::id()) {
 		if (_worker.joinable())
 			_worker.join();
 		else
 			_worker.detach();
 	}
+
+	_shutdownRequested.store(false);
+	Active.store(true);
 	_worker = std::thread([](JobSystemWorker* worker) { worker->_jobsystem->WorkerLoop(worker); }, this);
 #else
 	if(!_shutdownRequested.load())
