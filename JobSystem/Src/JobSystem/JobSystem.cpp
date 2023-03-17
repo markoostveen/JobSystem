@@ -57,6 +57,9 @@ namespace JbSystem {
 
 	JobSystem::~JobSystem()
 	{
+		if (_workers.size() == 0)
+			return;
+
 		for (Job*& leftOverJob : Shutdown()) {
 			leftOverJob->Free();
 		}
@@ -101,7 +104,7 @@ namespace JbSystem {
 			_workers[i].Start();
 		}
 
-		Active = true;
+		Active.store(true);
 
 		//Reschedule saved jobs
 
@@ -137,18 +140,9 @@ namespace JbSystem {
 	std::vector<Job*> JbSystem::JobSystem::Shutdown()
 	{
 		//Wait for jobsystem to finish remaining jobs
-		bool finished = false;
-		while (!finished) {
-			for (int i = 0; i < _workerCount; i++)
-			{
-				if (!_workers[i]._highPriorityTaskQueue.empty()) continue;
-				if (!_workers[i]._normalPriorityTaskQueue.empty()) continue;
-				if (!_workers[i]._lowPriorityTaskQueue.empty()) continue;
-			}
-			finished = true;
-		}
+		WaitForAllJobs();
 
-		Active = false;
+		Active.store(false);
 
 
 		bool wasActive = false;
@@ -286,6 +280,16 @@ namespace JbSystem {
 			JobSystemSingleton = new JobSystem();
 		}
 		return JobSystemSingleton;
+	}
+
+	void JobSystem::WaitForJobsAndShutdown()
+	{
+		Active.store(false);
+		WaitForAllJobs();
+		auto jobsScheduledAfterStoppingWorkers = Shutdown();
+		for (Job*& leftOverJob : jobsScheduledAfterStoppingWorkers) {
+			leftOverJob->Free();
+		}
 	}
 
 	JobId JobSystem::Schedule(Job* const& newJob, const JobPriority priority)
@@ -711,10 +715,11 @@ namespace JbSystem {
 		for (int i = 0; i < workerCount; i++)
 		{
 			auto& worker = _workers.at(i);
-			worker._shutdownRequested.store(false);
 
-			if (!worker.IsActive())
+			if (!worker.IsActive()) {
+				worker._shutdownRequested.store(false);
 				worker.Start();
+			}
 		}
 	}
 

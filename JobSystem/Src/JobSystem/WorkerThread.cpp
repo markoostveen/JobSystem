@@ -85,7 +85,7 @@ void JobSystemWorker::ThreadLoop() {
 		}
 
 		// Do not shutdown in case there are no other workers
-		if (otherWorkersActive || !_jobsystem->Active) {
+		if (otherWorkersActive || !_jobsystem->Active.load()) {
 			break;
 		}
 	}
@@ -95,8 +95,6 @@ void JobSystemWorker::ThreadLoop() {
 
 void JbSystem::JobSystemWorker::KeepAliveLoop()
 {
-	std::unique_lock ul(_isRunningMutex);
-	_isRunning.store(true);
 	while (!_shutdownRequested.load()) {
 		_jobsystem->WorkerLoop(this);
 
@@ -106,9 +104,6 @@ void JbSystem::JobSystemWorker::KeepAliveLoop()
 		break;
 #endif
 	}
-	// This only gets hit when while loop breaks
-	Active.store(false);
-	_isRunning.store(false);
 }
 
 void JbSystem::JobSystemWorker::RequestShutdown()
@@ -159,7 +154,8 @@ void JbSystem::JobSystemWorker::WaitForShutdown()
 
 void JobSystemWorker::Start()
 {
-	_jobsystem->OptimizePerformance(); // Determin best scaling options
+	if (!_jobsystem->Active.load())
+		return;
 
 	_modifyingThread.lock();
 
@@ -178,13 +174,21 @@ void JobSystemWorker::Start()
 
 	_shutdownRequested.store(false);
 	Active.store(true);
-	_worker = std::thread([](JobSystemWorker* worker) { worker->_jobsystem->WorkerLoop(worker); }, this);
+	_worker = std::thread([this](JobSystemWorker* worker) {
+		std::unique_lock ul(_isRunningMutex);
+		_isRunning.store(true);
+
+		worker->_jobsystem->WorkerLoop(worker);
+		_isRunning.store(false);
+		Active.store(false);
+	}, this);
 #else
 	if(!_shutdownRequested.load())
 		Active.store(true);
 #endif
 
 	_modifyingThread.unlock();
+	_jobsystem->OptimizePerformance(); // Determin best scaling options
 
 }
 

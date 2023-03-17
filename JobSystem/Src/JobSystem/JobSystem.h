@@ -164,10 +164,12 @@ namespace JbSystem {
 		/// <returns></returns>
 		static JobSystem* GetInstance();
 
+		void WaitForJobsAndShutdown();
+
 		/// <summary>
 		/// is the job system active or not
 		/// </summary>
-		bool Active = false;
+		std::atomic<bool> Active = false;
 		WorkerThreadLoop WorkerLoop;
 	private:
 
