@@ -128,7 +128,6 @@ JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
 	_isRunningMutex(), _worker(),
 	_isBusy(false)
 {
-	_worker = std::thread([](JobSystemWorker* worker) { worker->KeepAliveLoop(); }, this);
 }
 
 JbSystem::JobSystemWorker::JobSystemWorker(const JobSystemWorker& worker)
