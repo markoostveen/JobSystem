@@ -178,13 +178,22 @@ void JobSystemWorker::Start()
 		std::unique_lock ul(_isRunningMutex);
 		_isRunning.store(true);
 
-		worker->_jobsystem->WorkerLoop(worker);
+		worker->KeepAliveLoop();
 		_isRunning.store(false);
 		Active.store(false);
 	}, this);
 #else
-	if(!_shutdownRequested.load())
+	if(!_shutdownRequested.load()){
 		Active.store(true);
+		_worker = std::thread([this](JobSystemWorker* worker) {
+			std::unique_lock ul(_isRunningMutex);
+			_isRunning.store(true);
+
+			worker->KeepAliveLoop();
+			_isRunning.store(false);
+			Active.store(false);
+		}, this);
+	}
 #endif
 
 	_modifyingThread.unlock();
