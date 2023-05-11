@@ -294,12 +294,11 @@ namespace JbSystem {
 
 	JobId JobSystem::Schedule(Job* const& newJob, const JobPriority priority)
 	{
-		JobId jobId = newJob->GetId();
+		const JobId& jobId = newJob->GetId();
 
 		JobSystemWorker& worker = _workers.at(GetRandomWorker());
 		worker.GiveFutureJob(jobId);
-		Schedule(worker, newJob, priority);
-		return jobId;
+		return Schedule(worker, newJob, priority);
 	}
 
 	JobId JobSystem::Schedule(Job* const& job, const JobPriority priority, const std::vector<JobId>& dependencies)
@@ -392,19 +391,33 @@ namespace JbSystem {
 		return workerId;
 	}
 
-	const std::vector<JobId> JobSystem::BatchScheduleJob(const std::vector<Job*>& newjobs, const JobPriority priority)
+	const std::vector<JobId> JobSystem::BatchScheduleJob(const std::vector<Job*>& newJobs, const JobPriority priority)
 	{
-		std::vector<JobId> jobIds(newjobs.size(), JobId(0));
+		constexpr int batchSize = 10;
+		std::vector<JobId> jobIds(newJobs.size(), JobId(0));
 
-		auto parallelJob = CreateParallelJob<const std::vector<Job*>*, std::vector<JobId>*, JobPriority, JobSystem*>(0, newjobs.size(), 10, 
-			[](const int& jobIndex, const std::vector<Job*>* newjobs, std::vector<JobId>* jobIds, JobPriority priority, JobSystem* jobSystem) {
-			jobIds->at(jobIndex) = JobId(jobSystem->Schedule(newjobs->at(jobIndex), priority));
-			}, &newjobs, &jobIds, priority, this);
+		std::vector<int> workerIds(newJobs.size(), 0);
+		auto selectWorkersJob = CreateParallelJob<std::vector<int>*, const std::vector<Job*>*, JobSystem*>(0, newJobs.size(), batchSize, 
+		[](const int& jobIndex, std::vector<int>* workerIds, const std::vector<Job*>* newJobs, JobSystem* jobsystem){
+			workerIds->at(jobIndex) = jobsystem->ScheduleFutureJob(newJobs->at(jobIndex));
+		}, &workerIds, &newJobs, this);
 
-		std::vector<JobId> schedulingJobIds(parallelJob.size(), JobId(0));
-		for (size_t i = 0; i < parallelJob.size(); i++)
+		auto selectWorkerJobIds = std::vector<JobId>(selectWorkersJob.size(), JobId(0));
+		for (size_t i = 0; i < selectWorkersJob.size(); i++)
 		{
-			schedulingJobIds.at(i) = Schedule(parallelJob.at(i), JobPriority::High);
+			selectWorkerJobIds.at(i) = Schedule(selectWorkersJob.at(i), JobPriority::High);
+		}
+		
+
+		auto parallelJobs = CreateParallelJob<const std::vector<Job*>*, std::vector<JobId>*, std::vector<int>*, JobPriority, JobSystem*>(0, newJobs.size(), batchSize, 
+			[](const int& jobIndex, const std::vector<Job*>* newjobs, std::vector<JobId>* jobIds, std::vector<int>* workerIds, JobPriority priority, JobSystem* jobSystem) {
+				jobIds->at(jobIndex) = jobSystem->Schedule(workerIds->at(jobIndex), newjobs->at(jobIndex), priority);
+			}, &newJobs, &jobIds, &workerIds, priority, this);
+
+		std::vector<JobId> schedulingJobIds(parallelJobs.size(), JobId(0));
+		for (size_t i = 0; i < parallelJobs.size(); i++)
+		{
+			schedulingJobIds.at(i) = Schedule(parallelJobs.at(i), JobPriority::High, selectWorkerJobIds);
 		}
 		WaitForJobCompletion(schedulingJobIds);
 
