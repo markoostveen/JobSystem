@@ -674,15 +674,18 @@ namespace JbSystem {
 
 		}
 		int workerCount = extraKnownWorkerCount + votedWorkers;
-		int averageJobsPerWorker = totalJobs / workerCount;
+		double averageJobsPerWorker = (double)totalJobs / workerCount;
 
 		if (averageJobsPerWorker > maxThreadDepth / 2 && _activeWorkerCount.load() >= _workerCount && extraKnownWorkerCount <= 1)
 			_preventIncomingScheduleCalls.store(true);
 		else
 			_preventIncomingScheduleCalls.store(false);
 
-		if (averageJobsPerWorker > 1.0) {
-			if (_activeWorkerCount < _workerCount) {
+		if (averageJobsPerWorker >= 0.85) {
+			if (workerCount < _workerCount) {
+				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
+			}
+			else if (averageJobsPerWorker > 1.0 && _activeWorkerCount < _workerCount) {
 				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
 			}
 		}
