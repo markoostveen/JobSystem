@@ -9,23 +9,21 @@
 using namespace JbSystem;
 
 void JobSystemWorker::ThreadLoop() {
+	//std::cout << "Worker has started" << std::endl;
+
 	std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
 	bool wasJobCompleted = false;
 	int noWork = 0;
 	while (true) {
 
+		_isBusy.store(true);
 
 		Job* job = nullptr;
 		for (size_t i = 0; i < 3; i++)
 		{
-			_isBusy.store(true);
 			job = TryTakeJob(JobPriority::Low);
-			if (job != nullptr) {
+			if (job != nullptr)
 				break;
-			}
-			else {
-				_isBusy.store(false);
-			}
 		}
 
 
@@ -46,14 +44,9 @@ void JobSystemWorker::ThreadLoop() {
 
 		for (size_t i = 0; i < 5; i++)
 		{
-			_isBusy.store(true);
 			job = _jobsystem->TakeJobFromWorker(randomWorker, JobPriority::Low);
-			if (job != nullptr) {
+			if (job != nullptr)
 				break;
-			}
-			else {
-				_isBusy.store(false);
-			}
 		}
 
 		if (job != nullptr)
