@@ -206,12 +206,12 @@ namespace JbSystem {
 				if (!worker.IsActive())
 					continue;
 
-				if (!worker.Busy()) {
-					if (worker.ScheduledJobCount() == 0) {
-						continue;
-					}
+				if (worker.ScheduledJobCount() == 0) {
+					continue;
 				}
-				wasActive = true;
+				if (worker.Busy()) {
+					wasActive = true;
+				}
 			}
 		} while (wasActive);
 	}
