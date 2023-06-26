@@ -150,7 +150,11 @@ namespace JbSystem {
 		/// </summary>
 		void ExecuteJob(const JobPriority maxTimeInvestment);
 
-		void StartAllWorkers();
+		/// <summary>
+		/// Start all workers
+		/// </summary>
+		/// <param name="activeWorkersOnly">Workers proposed by jobsystem</param>
+		void StartAllWorkers(bool activeWorkersOnly = true);
 
 		int GetWorkerCount();
 		int GetActiveWorkerCount();

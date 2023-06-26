@@ -720,9 +720,9 @@ namespace JbSystem {
 		_optimizePerformance.unlock();
 	}
 
-	void JobSystem::StartAllWorkers()
+	void JobSystem::StartAllWorkers(bool activeWorkersOnly)
 	{
-		int workerCount = _activeWorkerCount.load();
+		int workerCount = activeWorkersOnly ? _activeWorkerCount.load() : _workerCount;
 		for (int i = 0; i < workerCount; i++)
 		{
 			auto& worker = _workers.at(i);
