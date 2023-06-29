@@ -16,8 +16,6 @@ void JobSystemWorker::ThreadLoop() {
 	int noWork = 0;
 	while (true) {
 
-		_isBusy.store(true);
-
 		Job* job = nullptr;
 		for (size_t i = 0; i < 3; i++)
 		{
@@ -28,6 +26,7 @@ void JobSystemWorker::ThreadLoop() {
 
 
 		if (job != nullptr) {
+			_isBusy.store(true);
 			_jobsystem->RunJob(*this, job);
 			_isBusy.store(false);
 			wasJobCompleted = true;
@@ -51,6 +50,7 @@ void JobSystemWorker::ThreadLoop() {
 
 		if (job != nullptr)
 		{
+			_isBusy.store(true);
 			assert(randomWorker.IsJobScheduled(job->GetId()));
 			_jobsystem->RunJob(randomWorker, job);
 			_isBusy.store(false);

@@ -11,6 +11,8 @@
 
 namespace JbSystem {
 
+	// Thread locals
+	static thread_local std::uint16_t randomWorkerIndex;
 
 	// Prevent wild recursion patterns
 	const int maxThreadDepth = 5;
@@ -636,7 +638,7 @@ namespace JbSystem {
 	{
 		Job* job = worker.TryTakeJob(maxTimeInvestment);
 		if (job == nullptr) // Was not able to take a job from specific worker
-			return nullptr;
+			return job;
 
 		assert(worker.IsJobScheduled(job->GetId()));
 		assert(!JobInStack(job->GetId()));
@@ -681,13 +683,8 @@ namespace JbSystem {
 		else
 			_preventIncomingScheduleCalls.store(false);
 
-		if (averageJobsPerWorker >= 0.85) {
-			if (workerCount < _workerCount) {
-				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
-			}
-			else if (averageJobsPerWorker > 1.0 && _activeWorkerCount < _workerCount) {
-				_activeWorkerCount.store(_activeWorkerCount.load() + 1);
-			}
+		if (averageJobsPerWorker >= 1.0 && _activeWorkerCount < _workerCount && workerCount < _workerCount) {
+			_activeWorkerCount.store(_activeWorkerCount.load() + 1);
 		}
 		else if (_activeWorkerCount > _minimumActiveWorkers) {
 			_activeWorkerCount.store(_activeWorkerCount.load() - 1);
@@ -939,7 +936,10 @@ namespace JbSystem {
 
 	int JobSystem::GetRandomWorker()
 	{
-		return rand() % _activeWorkerCount.load();
+		randomWorkerIndex++;
+		if (randomWorkerIndex >= _activeWorkerCount.load())
+			randomWorkerIndex = 0;
+		return randomWorkerIndex;
 	}
 
 	JobId JobSystem::Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority priority)

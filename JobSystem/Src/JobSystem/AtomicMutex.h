@@ -23,8 +23,7 @@ namespace JbSystem {
 
 		void lock()
 		{
-			while (_flag.exchange(true, std::memory_order_relaxed));
-			std::atomic_thread_fence(std::memory_order_acquire);
+			while (!try_lock());
 		}
 
 		void unlock()
