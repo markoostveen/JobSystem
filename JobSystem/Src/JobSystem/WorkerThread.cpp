@@ -6,12 +6,18 @@
 #include <string>
 #include <chrono>
 
+#ifdef _WIN32
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+
 using namespace JbSystem;
 
 void JobSystemWorker::ThreadLoop() {
 	//std::cout << "Worker has started" << std::endl;
 
-	std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
+	auto startTime = __rdtsc();
 	bool wasJobCompleted = false;
 	int noWork = 0;
 	while (true) {
@@ -57,15 +63,23 @@ void JobSystemWorker::ThreadLoop() {
 			wasJobCompleted = true;
 		}
 			
+		// Reset time tracking
 		if (wasJobCompleted)
 		{
-			noWork = 0;
 			wasJobCompleted = false;
-			startTime = std::chrono::high_resolution_clock::now();
+			noWork = 0;
+			startTime = __rdtsc();
+		}
+
+		auto currentCycles = __rdtsc();
+		auto elapsedCycles = currentCycles - startTime;
+		if (currentCycles < startTime) { // Happens ocasionally on some architectures
+			noWork = 0;
 			continue;
 		}
 
-		if ((std::chrono::high_resolution_clock::now() - startTime) <= std::chrono::milliseconds(25))
+		// If thread has executed a job less than X CPU cycle ago then try again
+		if (elapsedCycles <= 90'000'000ull)
 		{
 			noWork = 0;
 			continue;
@@ -197,8 +211,6 @@ void JobSystemWorker::Start()
 #endif
 
 	_modifyingThread.unlock();
-	_jobsystem->OptimizePerformance(); // Determin best scaling options
-
 }
 
 int JbSystem::JobSystemWorker::WorkerId()
