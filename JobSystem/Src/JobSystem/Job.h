@@ -4,6 +4,7 @@
 #include "boost/container/vector.hpp"
 #include <functional>
 #include <type_traits>
+#include <cstdint>
 
 namespace JbSystem {
 	enum class JobPriority {

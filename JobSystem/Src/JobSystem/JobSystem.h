@@ -14,6 +14,7 @@
 #include <type_traits>
 #include <cassert>
 #include <functional>
+#include <cstdint>
 
 namespace JbSystem {
 
