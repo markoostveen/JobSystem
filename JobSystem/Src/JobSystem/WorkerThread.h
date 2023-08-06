@@ -17,54 +17,58 @@ namespace JbSystem {
 		friend class JobSystem;
 
 	public:
-		JobSystemWorker(JobSystem* jobsystem);
-		JobSystemWorker(const JobSystemWorker& worker);
-		~JobSystemWorker();
+          JobSystemWorker(JobSystemWorker &&) = default;
+          JobSystemWorker &operator=(const JobSystemWorker &) = delete;
+          JobSystemWorker &operator=(JobSystemWorker &&) = delete;
+          explicit JobSystemWorker(JobSystem *jobsystem);
+          JobSystemWorker(const JobSystemWorker &worker);
+          ~JobSystemWorker();
 
-		/// <summary>
-		/// returns weather or not worker is open to execute tasks
-		/// there might be a delay in thread actually exiting be carefull
-		/// </summary>
-		/// <returns></returns>
-		bool IsActive();
-		void WaitForShutdown();
-		void Start(); //Useful when thread became lost for some reason
-		int WorkerId();
+          /// <summary>
+          /// returns weather or not worker is open to execute tasks
+          /// there might be a delay in thread actually exiting be carefull
+          /// </summary>
+          /// <returns></returns>
+          bool IsActive();
+          void WaitForShutdown();
+          void Start(); // Useful when thread became lost for some reason
+          int WorkerId();
 
-		Job* TryTakeJob(const JobPriority& maxTimeInvestment);
-		void UnScheduleJob(const JobId& previouslyScheduledJob);
-		void ScheduleJob(const JobId& jobId);
+          Job *TryTakeJob(const JobPriority &maxTimeInvestment);
+          void UnScheduleJob(const JobId &previouslyScheduledJob);
+          void ScheduleJob(const JobId &jobId);
 
-		bool IsJobInQueue(const JobId& jobId);
+          bool IsJobInQueue(const JobId &jobId);
 
-		size_t ScheduledJobCount();
+          size_t ScheduledJobCount();
 
-		/// <summary>
-		/// Give a job to the worker thread
-		/// NOTE* This will take ownership over the job
-		/// </summary>
-		/// <param name="newJob"></param>
-		/// <param name="priority"></param>
-		bool GiveJob(Job* const& newJob, const JobPriority priority);
-		void GiveFutureJob(const JobId& jobId);
-		void GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size);
+          /// <summary>
+          /// Give a job to the worker thread
+          /// NOTE* This will take ownership over the job
+          /// </summary>
+          /// <param name="newJob"></param>
+          /// <param name="priority"></param>
+          bool GiveJob(Job *const &newJob, const JobPriority priority);
+          void GiveFutureJob(const JobId &jobId);
+          void GiveFutureJobs(const std::vector<Job *> &newjobs, int startIndex,
+                              int size);
 
-		/// <summary>
-		/// Finishes job and cleans up after
-		/// </summary>
-		/// <param name="job"></param>
-		void FinishJob(Job*& job);
+          /// <summary>
+          /// Finishes job and cleans up after
+          /// </summary>
+          /// <param name="job"></param>
+          void FinishJob(Job *&job);
 
-		bool IsJobScheduled(const JobId& jobId);
+          bool IsJobScheduled(const JobId &jobId);
 
-		void ThreadLoop();
+          void ThreadLoop();
 
-		void RequestShutdown();
+          void RequestShutdown();
 
-		//Is the read suppost to be active
-		std::atomic<bool> Active;
+          // Is the read suppost to be active
+          std::atomic<bool> Active;
 
-		bool Busy();
+          bool Busy();
 
 	private:
 

@@ -189,7 +189,7 @@ namespace JbSystem {
 		const std::vector<JobId> BatchScheduleJob(const std::vector<Job*>& newjobs, const JobPriority priority);
 		const std::vector<int> BatchScheduleFutureJob(const std::vector<Job*>& newjobs);
 
-		Job* TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment = JobPriority::Low);
+		static Job* TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment = JobPriority::Low);
 
 
 		bool IsJobCompleted(const JobId& jobId, JobSystemWorker*& jobWorker);

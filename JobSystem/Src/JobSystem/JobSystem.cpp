@@ -606,21 +606,23 @@ namespace JbSystem {
 
 		bool jobFinished = IsJobCompleted(jobId);
 
-		std::chrono::time_point start = std::chrono::steady_clock::now();
+		const std::chrono::time_point start = std::chrono::steady_clock::now();
 
 		threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
 		while (!jobFinished) {
 			ExecuteJob(maximumHelpEffort); // use resources to aid workers instead of sleeping
 
-			int passedMicroSeconds = static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+			const int passedMicroSeconds = static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
 
-			if (passedMicroSeconds < maxMicroSecondsToWait)
+			if (passedMicroSeconds < maxMicroSecondsToWait) {
 				continue;
+			}
 
 			jobFinished = IsJobCompleted(jobId);
 
-			if (maxMicroSecondsToWait != 0 && passedMicroSeconds > maxMicroSecondsToWait && !jobFinished)
+			if (maxMicroSecondsToWait != 0 && passedMicroSeconds > maxMicroSecondsToWait && !jobFinished) {
 				return false;
+			}
 		}
 		threadDepth++;
 
@@ -629,7 +631,7 @@ namespace JbSystem {
 
 	void JobSystem::WaitForJobCompletion(const std::vector<JobId>& jobIds, JobPriority maximumHelpEffort)
 	{
-		for (JobId id : jobIds) {
+		for (const JobId& id : jobIds) {
 			WaitForJobCompletion(id, maximumHelpEffort);
 		}
 	}

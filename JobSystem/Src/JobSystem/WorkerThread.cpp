@@ -2,9 +2,12 @@
 
 #include "JobSystem.h"
 
-#include <iostream>
-#include <string>
 #include <chrono>
+
+#include <iostream>
+
+#include <string>
+
 
 using namespace JbSystem;
 
@@ -281,9 +284,9 @@ size_t JbSystem::JobSystemWorker::ScheduledJobCount()
 
 void JbSystem::JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJob)
 {
-	const int& id = previouslyScheduledJob.ID();
-	assert(!IsJobInQueue(id)); // In case the task is still scheduled then it wasn't removed properly
+	assert(!IsJobInQueue(previouslyScheduledJob)); // In case the task is still scheduled then it wasn't removed properly
 
+	const int& id = previouslyScheduledJob.ID();
 	_modifyingThread.lock();
 	_scheduledJobsMutex.lock();
 	assert(_scheduledJobs.contains(id));

@@ -31,10 +31,10 @@ namespace JbSystem {
 		// New kind of Id based on int, but without implicit conversion as it should not be used that way
 
 	public:
-		JobId(const int& Id);
+		explicit JobId(const int& Id);
 		bool operator==(const JobId&) const = default;
 
-		const int& ID() const;
+		[[nodiscard]] const int& ID() const;
 
 	private:
 		int _id;
@@ -54,19 +54,19 @@ namespace JbSystem {
 			_destructorfunction(this);
 		}
 		
-		JobId GetId() const; // Return copy it needs to be available after Job object get's destroyed
+		[[nodiscard]] JobId GetId() const; // Return copy it needs to be available after Job object get's destroyed
 
 		inline void Run() const {
 			_basefunction(this);
 		}
 
 		void SetIgnoreCallback(const IgnoreJobCallback& callback);
-		const IgnoreJobCallback& GetIgnoreCallback() const;
+		[[nodiscard]] const IgnoreJobCallback& GetIgnoreCallback() const;
 
 		void SetEmptyStackRequired(bool emptyStackRequired);
-		const bool& GetEmptyStackRequired();
+		[[nodiscard]] const bool& GetEmptyStackRequired() const;
 
-		static const JobId RequestUniqueID();
+		static JobId RequestUniqueID();
 
 	protected:
 		typedef void(*Function)(const Job* const&);
@@ -144,8 +144,8 @@ namespace JbSystem {
 		inline void Free() { delete this; };
 
 
-		JobVoid(const Function& function, const Job::DestructorFunction& destructorFunction) : JobVoid(Job::RequestUniqueID(), function, destructorFunction) {}
-		JobVoid(const Function& function) : JobVoid(Job::RequestUniqueID(), function, [](Job* const& base) { static_cast<JobVoid*>(base)->Free(); }) {}
+		explicit JobVoid(const Function& function, const Job::DestructorFunction& destructorFunction) : JobVoid(Job::RequestUniqueID(), function, destructorFunction) {}
+		explicit JobVoid(const Function& function) : JobVoid(Job::RequestUniqueID(), function, [](Job* const& base) { static_cast<JobVoid*>(base)->Free(); }) {}
 
 		inline void Run() const {
 			_function();
