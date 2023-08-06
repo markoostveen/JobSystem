@@ -1,15 +1,19 @@
 cmake_minimum_required (VERSION 3.20)
 
-# Setup and download catch
-Include(FetchContent)
-FetchContent_Declare(
-    Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG        v3.1.0 # or a later release
-    )
 
-FetchContent_MakeAvailable(Catch2)
-target_compile_definitions(Catch2 PUBLIC "CATCH_CONFIG_DISABLE_EXCEPTIONS=1")
+find_package(Catch2 CONFIG REQUIRED)
+if (NOT ${Catch2_FOUND})
+	# Setup and download catch
+	Include(FetchContent)
+	FetchContent_Declare(
+		Catch2
+		GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+		GIT_TAG        v3.1.0 # or a later release
+		)
+
+	FetchContent_MakeAvailable(Catch2)
+	target_compile_definitions(Catch2 PUBLIC "CATCH_CONFIG_DISABLE_EXCEPTIONS=1")
+endif()
 
 
 macro(Add_Test_JobSystem TestName CppFiles)
