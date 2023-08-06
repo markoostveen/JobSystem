@@ -15,15 +15,16 @@ namespace JbSystem {
 		}
 
 		bool try_lock() {
-			if (_flag.exchange(true, std::memory_order_relaxed))
+			if (_flag.exchange(true, std::memory_order_relaxed)) {
 				return false;
+			}
 			std::atomic_thread_fence(std::memory_order_acquire);
 			return true;
 		}
 
 		void lock()
 		{
-			while (!try_lock());
+			while (!try_lock()) {}
 		}
 
 		void unlock()

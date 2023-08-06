@@ -29,7 +29,7 @@ namespace JbSystem {
           /// there might be a delay in thread actually exiting be carefull
           /// </summary>
           /// <returns></returns>
-          bool IsActive();
+          bool IsActive() const;
           void WaitForShutdown();
           void Start(); // Useful when thread became lost for some reason
           int WorkerId();

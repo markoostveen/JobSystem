@@ -253,7 +253,7 @@ namespace JbSystem {
 		// Deadlock prevention
 		JbSystem::mutex _spawnedThreadsMutex;
 		std::unordered_map<std::thread::id, std::thread> _spawnedThreadsExecutingIgnoredJobs;
-	};
+};
 
 	template<class ...Args>
 	inline Job* JobSystem::CreateJobWithParams(typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
