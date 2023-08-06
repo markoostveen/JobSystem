@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.20)
 
 
-find_package(Catch2 CONFIG REQUIRED)
+find_package(Catch2 CONFIG)
 if (NOT ${Catch2_FOUND})
 	# Setup and download catch
 	Include(FetchContent)

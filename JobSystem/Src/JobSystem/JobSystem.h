@@ -27,7 +27,7 @@ namespace JbSystem {
 
 	public:
 		
-		JobSystem(const int threadCount = std::thread::hardware_concurrency() - 1, WorkerThreadLoop workerLoop = [](JobSystemWorker* worker) { worker->ThreadLoop(); });
+		JobSystem(unsigned int threadCount = std::thread::hardware_concurrency() - 1, WorkerThreadLoop workerLoop = [](JobSystemWorker* worker) { worker->ThreadLoop(); });
 		~JobSystem();
 
 		/// <summary>
@@ -36,7 +36,7 @@ namespace JbSystem {
 		/// Note, currently scheduled jobs will be rescheduled, during rescheduling, priority order isn't guarenteed
 		/// </summary>
 		/// <param name="threadCount"></param>
-		void ReConfigure(const int threadCount = std::thread::hardware_concurrency() - 1);
+		void ReConfigure(unsigned int threadCount = std::thread::hardware_concurrency() - 1);
 
 		//Single
 		template<class ...Args>
@@ -55,40 +55,40 @@ namespace JbSystem {
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		JobId Schedule(Job* const& newjob, const JobPriority priority);
+		JobId Schedule(Job* const& newjob, const JobPriority& priority);
 		/// <summary>
 		/// Gives the job to one of the workers for execution
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
 		template<typename ...DependencyJobId>
-		JobId Schedule(Job* const& job, const JobPriority priority, const DependencyJobId... dependencies);
+		JobId Schedule(Job* const& job, const JobPriority& priority, const DependencyJobId... dependencies);
 		/// <summary>
 		/// Gives the job to one of the workers for execution
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		JobId Schedule(Job* const& job, const JobPriority priority, const std::vector<JobId>& dependencies);
+		JobId Schedule(Job* const& job, const JobPriority& priority, const std::vector<JobId>& dependencies);
 
 		/// <summary>
 		/// Gives the job to one of the workers for execution
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		const std::vector<JobId> Schedule(const std::vector<Job*>& newjobs, const JobPriority priority);
+		std::vector<JobId> Schedule(const std::vector<Job*>& newjobs, const JobPriority& priority);
 		/// <summary>
 		/// Gives the job to one of the workers for execution
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
 		template<typename ...DependencyJobId>
-		const std::vector<JobId> Schedule(const std::vector<Job*>& newjobs, const JobPriority priority, const DependencyJobId... dependencies);
+		std::vector<JobId> Schedule(const std::vector<Job*>& newjobs, const JobPriority& priority, const DependencyJobId... dependencies);
 		/// <summary>
 		/// Gives the job to one of the workers for execution
 		/// </summary>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		const std::vector<JobId> Schedule(const std::vector<Job*>& newjobs, const JobPriority priority, const std::vector<JobId>& dependencies);
+		std::vector<JobId> Schedule(const std::vector<Job*>& newjobs, const JobPriority& priority, const std::vector<JobId>& dependencies);
 
 		/// <summary>
 		/// 
@@ -118,13 +118,13 @@ namespace JbSystem {
 		/// <param name="jobId"></param>
 		/// <param name="maxMicroSecondsToWait">when elapsed function will return false if job hasn't been completed yet, 0 = infinity</param>
 		/// <returns>weather or not the job was completed in time</returns>
-		bool WaitForJobCompletion(const JobId& jobId, int maxMicroSecondsToWait, const JobPriority maximumHelpEffort = JobPriority::Low);
+		bool WaitForJobCompletion(const JobId& jobId, int maxMicroSecondsToWait, JobPriority maximumHelpEffort = JobPriority::Low);
 
 		/// <summary>
 		/// Block execution until given jobs have been completed, this operation is blocking
 		/// </summary>
 		/// <param name="jobIds"></param>
-		void WaitForJobCompletion(const std::vector<JobId>& jobIds, const JobPriority maximumHelpEffort = JobPriority::Low);
+		void WaitForJobCompletion(const std::vector<JobId>& jobIds, JobPriority maximumHelpEffort = JobPriority::Low);
 
 		/// <summary>
 		/// wait for jobs to complete, then execute function
@@ -149,7 +149,7 @@ namespace JbSystem {
 		/// <summary>
 		/// Executes a scheduled job
 		/// </summary>
-		void ExecuteJob(const JobPriority maxTimeInvestment);
+		void ExecuteJob(const JobPriority& maxTimeInvestment);
 
 		/// <summary>
 		/// Start all workers
@@ -157,7 +157,7 @@ namespace JbSystem {
 		/// <param name="activeWorkersOnly">Workers proposed by jobsystem</param>
 		void StartAllWorkers(bool activeWorkersOnly = true);
 
-		int GetWorkerCount();
+		int GetWorkerCount() const;
 		int GetActiveWorkerCount();
 		int GetWorkerId(JobSystemWorker* worker);
 
@@ -186,10 +186,10 @@ namespace JbSystem {
 		std::vector<Job*> Shutdown();
 
 		int ScheduleFutureJob(Job* const& newFutureJob);
-		const std::vector<JobId> BatchScheduleJob(const std::vector<Job*>& newjobs, const JobPriority priority);
-		const std::vector<int> BatchScheduleFutureJob(const std::vector<Job*>& newjobs);
+		std::vector<JobId> BatchScheduleJob(const std::vector<Job*>& newjobs, const JobPriority& priority);
+		std::vector<int> BatchScheduleFutureJob(const std::vector<Job*>& newjobs);
 
-		static Job* TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment = JobPriority::Low);
+		static Job* TakeJobFromWorker(JobSystemWorker& worker, JobPriority maxTimeInvestment = JobPriority::Low);
 
 
 		bool IsJobCompleted(const JobId& jobId, JobSystemWorker*& jobWorker);
@@ -202,7 +202,7 @@ namespace JbSystem {
 		void RescheduleWorkerJobsFromInActiveWorkers();
 
 		bool TryRunJob(JobSystemWorker& worker, Job*& currentJob);
-		void RunJob(JobSystemWorker& worker, Job*& currentJob);
+		static void RunJob(JobSystemWorker& worker, Job*& currentJob);
 		void RunJobInNewThread(JobSystemWorker& worker, Job*& currentJob);
 
 		int GetRandomWorker();
@@ -213,7 +213,7 @@ namespace JbSystem {
 		/// <param name="workerId"></param>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		JobId Schedule(const int& workerId, Job* const& newJob, const JobPriority priority);
+		JobId Schedule(const int& workerId, Job* const& newJob, const JobPriority& priority);
 
 		/// <summary>
 		/// Schedules a job in a specific worker
@@ -221,11 +221,11 @@ namespace JbSystem {
 		/// <param name="workerId"></param>
 		/// <param name="newjob"></param>
 		/// <returns></returns>
-		JobId Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority priority);
+		JobId Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority& priority);
 
-		void SafeRescheduleJob(Job* const& oldJob, JobSystemWorker& oldWorker);
+		static void SafeRescheduleJob(Job* const& oldJob, JobSystemWorker& oldWorker);
 
-		const std::vector<JobId> Schedule(const std::vector<int>& workerIds, const JobPriority priority, const std::vector<Job*>& newjobs);
+		std::vector<JobId> Schedule(const std::vector<int>& workerIds, const JobPriority& priority, const std::vector<Job*>& newjobs);
 
 		/// <summary>
 		/// Take all scheduled jobs from all workers
@@ -270,25 +270,26 @@ namespace JbSystem {
 	template<class ...Args>
 	inline std::vector<Job*> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function, Args ...args)
 	{
-		if (batchSize < 1)
+		if (batchSize < 1) {
 			batchSize = 1;
+		}
 
 
 
-		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int startIndex, int endIndex, Args ...args)
+		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int loopStartIndex, int loopEndIndex, Args ...args)
 		{
-			for (int& i = startIndex; i < endIndex; i++)
+			for (int& i = loopStartIndex; i < loopEndIndex; i++)
 			{
 				callback(i, std::forward<Args>(args)...);
 			}
 		};
 
-		int jobStartIndex;
-		int jobEndIndex;
+		int jobStartIndex = 0;
+		int jobEndIndex = 0;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
-		int endOfRange = endIndex - startIndex;
+		const int endOfRange = endIndex - startIndex;
 
 		int CurrentBatchEnd = endOfRange;
 		while (CurrentBatchEnd > batchSize) {
@@ -317,7 +318,7 @@ namespace JbSystem {
 	}
 
 	template<typename ...DependencyJobId>
-	inline JobId JobSystem::Schedule(Job* const& job, const JobPriority priority, const DependencyJobId... dependencies)
+	inline JobId JobSystem::Schedule(Job* const& job, const JobPriority& priority, const DependencyJobId... dependencies)
 	{
 		const std::vector<JobId> dependencyArray = { dependencies ... };
 
@@ -333,7 +334,7 @@ namespace JbSystem {
 	}
 
 	template<typename ...DependencyJobId>
-	inline const std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority priority, const DependencyJobId ...dependencies)
+	inline std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority& priority, const DependencyJobId ...dependencies)
 	{
 		const std::vector<JobId> dependencyArray = { dependencies... };
 
@@ -360,7 +361,7 @@ namespace JbSystem {
 	template<class ...Args>
 	inline void JobSystem::ScheduleAfterJobCompletion(const std::vector<JobId>& dependencies, const JobPriority& dependencyPriority, typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
 	{
-		assert(dependencies.size() > 0);
+		assert(!dependencies.empty());
 
 		struct DependenciesTag {};
 
@@ -391,13 +392,14 @@ namespace JbSystem {
 		};
 
 		void* location = boost::singleton_pool<DependenciesTag, sizeof(std::vector<JobId>)>::malloc();
-		auto jobDependencies = new(location) std::vector<JobId>({ dependencies });
+		auto* jobDependencies = new(location) std::vector<JobId>({ dependencies });
 
 		Job* callbackJob = JobSystem::CreateJobWithParams(function, std::forward<Args>(args)...);
 		callbackJob->SetIgnoreCallback([jobDependencies = std::vector<JobId>({ dependencies })](const JobId& proposedJobId) {
 				for (const auto& dependencyId : jobDependencies) {
-					if (dependencyId == proposedJobId)
+					if (dependencyId == proposedJobId) {
 						return true;
+					}
 				}
 				return false;
 			}

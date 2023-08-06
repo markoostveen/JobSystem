@@ -307,7 +307,7 @@ void JbSystem::JobSystemWorker::ScheduleJob(const JobId& jobId)
 	_modifyingThread.unlock();
 }
 
-bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority priority)
+bool JbSystem::JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority& priority)
 {
 	if (!IsActive()) {
 		return false;

@@ -1,10 +1,9 @@
 #pragma once
 
-#include <memory>
-#include "boost/container/vector.hpp"
-#include <functional>
-#include <type_traits>
 #include <cstdint>
+#include <functional>
+#include <memory>
+#include <type_traits>
 
 namespace JbSystem {
 	enum class JobPriority {
@@ -48,6 +47,10 @@ namespace JbSystem {
 	class Job {
 	public:
 		Job() = delete;
+		Job(const Job&) = delete;
+		Job(Job&&) = delete;
+		Job& operator=(const Job&) = delete;
+		Job& operator=(Job&&) = delete;
 		virtual ~Job() = default;
 
 		inline void Free() {
@@ -88,18 +91,19 @@ namespace JbSystem {
 	public:
 		typedef void(*Function)(Args...);
 
-		virtual ~JobWithParameters() = default;
+		JobWithParameters() = delete;
+		JobWithParameters(const JobWithParameters&) = delete;
+		JobWithParameters(JobWithParameters&&) = delete;
+		JobWithParameters& operator=(const JobWithParameters&) = delete;
+		JobWithParameters& operator=(JobWithParameters&&) = delete;
+		~JobWithParameters() override = default;
 
 		inline void Free() { delete this; };
 
-		JobWithParameters(const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, destructorFunction, parameters...) {}
-		JobWithParameters(const Function& function, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, [](Job* base) { static_cast<JobWithParameters<Args...>*>(base)->Free(); }, parameters...) {}
+		explicit JobWithParameters(const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, destructorFunction, parameters...) {}
+		explicit JobWithParameters(const Function& function, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, [](Job* base) { static_cast<JobWithParameters<Args...>*>(base)->Free(); }, parameters...) {}
 		inline void Run() const {
 			std::apply(_function, _parameters);
-		}
-
-		inline JobWithParameters operator=(const JobWithParameters& otherJob) {
-			return JobWithParameters(otherJob._function, otherJob._basefunction, otherJob._priority, otherJob._id, otherJob._parameters);
 		}
 
 	private:
@@ -120,13 +124,18 @@ namespace JbSystem {
 		struct Tag {};
 		typedef void(*DeconstructorCallback)(JobSystemWithParametersJob* const&);
 
-		virtual ~JobSystemWithParametersJob() = default;
+		JobSystemWithParametersJob() = delete;
+		JobSystemWithParametersJob(const JobSystemWithParametersJob&) = delete;
+		JobSystemWithParametersJob(JobSystemWithParametersJob&&) = delete;
+		JobSystemWithParametersJob& operator=(const JobSystemWithParametersJob&) = delete;
+		JobSystemWithParametersJob& operator=(JobSystemWithParametersJob&&) = delete;
+		~JobSystemWithParametersJob() override = default;
 
 		inline void Free() {
 			_deconstructorCallback(this);
 		}
 
-		JobSystemWithParametersJob(const typename JobWithParameters<Args...>::Function& function, const DeconstructorCallback& deconstructorCallback, Args... parameters)
+		explicit JobSystemWithParametersJob(const typename JobWithParameters<Args...>::Function& function, const DeconstructorCallback& deconstructorCallback, Args... parameters)
 			: JobWithParameters<Args...>(function, [](Job* const& base) { static_cast<JobSystemWithParametersJob*>(base)->Free(); }, parameters...), _deconstructorCallback(deconstructorCallback) {}
 
 	private:
@@ -138,21 +147,20 @@ namespace JbSystem {
 	public:
 		typedef void(*Function)();
 
-		virtual ~JobVoid() = default;
-
+		JobVoid() = delete;
+		JobVoid(const JobVoid&) = delete;
+		JobVoid(JobVoid&&) = delete;
+		JobVoid& operator=(const JobVoid&) = delete;
+		JobVoid& operator=(JobVoid&&) = delete;
+		~JobVoid() override = default;
 
 		inline void Free() { delete this; };
-
 
 		explicit JobVoid(const Function& function, const Job::DestructorFunction& destructorFunction) : JobVoid(Job::RequestUniqueID(), function, destructorFunction) {}
 		explicit JobVoid(const Function& function) : JobVoid(Job::RequestUniqueID(), function, [](Job* const& base) { static_cast<JobVoid*>(base)->Free(); }) {}
 
 		inline void Run() const {
 			_function();
-		}
-
-		inline JobVoid operator=(const JobVoid& otherJob) {
-			return JobVoid(otherJob._function, otherJob._basefunction, otherJob._destructorfunction, otherJob._id);
 		}
 
 	private:
@@ -174,7 +182,12 @@ namespace JbSystem {
 	public:
 		typedef void(*DeconstructorCallback)(JobSystemVoidJob* const&);
 
-		virtual ~JobSystemVoidJob() = default;
+		JobSystemVoidJob() = delete;
+		JobSystemVoidJob(const JobSystemVoidJob&) = delete;
+		JobSystemVoidJob(JobSystemVoidJob&&) = delete;
+		JobSystemVoidJob& operator=(const JobSystemVoidJob&) = delete;
+		JobSystemVoidJob& operator=(JobSystemVoidJob&&) = delete;
+		~JobSystemVoidJob() override = default;
 
 
 		inline void Free() {

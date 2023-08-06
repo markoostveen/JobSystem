@@ -48,7 +48,7 @@ namespace JbSystem {
           /// </summary>
           /// <param name="newJob"></param>
           /// <param name="priority"></param>
-          bool GiveJob(Job *const &newJob, const JobPriority priority);
+          bool GiveJob(Job *const &newJob, const JobPriority& priority);
           void GiveFutureJob(const JobId &jobId);
           void GiveFutureJobs(const std::vector<Job *> &newjobs, int startIndex,
                               int size);

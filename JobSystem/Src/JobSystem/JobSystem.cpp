@@ -16,10 +16,10 @@ namespace JbSystem {
 
 	// Prevent wild recursion patterns
 	const int maxThreadDepth = 5;
-	static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
+	static thread_local unsigned int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
 	static thread_local boost::container::small_vector<const Job*, sizeof(const Job*)* maxThreadDepth> jobStack; // stack of all jobs our current thread is executing
 	static thread_local bool allowedToLowerQueue = true;
-	static thread_local int maybeLowerWorkDepth = 0;
+	static thread_local unsigned int maybeLowerWorkDepth = 0;
 
 
 	// Control Optimization cycles
@@ -27,47 +27,51 @@ namespace JbSystem {
 	static thread_local int optimizeInCycles = 0;
 
 	bool JobInStack(const JobId& jobId) {
-		for (int i = 0; i < jobStack.size(); i++)
+		for (const auto& job : jobStack)
 		{
-			if (jobStack.at(i)->GetId() == jobId)
+			if (job->GetId() == jobId) {
 				return true;
+			}
 		}
 		return false;
 	}
 
 	bool IsProposedJobIgnoredByJobStack(const JobId& proposedJob) {
-		for (int i = 0; i < jobStack.size(); i++)
+		for (const auto& job : jobStack)
 		{
-			const Job* const& job = jobStack.at(i);
-			if (job->GetIgnoreCallback() == nullptr)
+			if (job->GetIgnoreCallback() == nullptr) {
 				continue;
+			}
 
-			if (job->GetIgnoreCallback()(proposedJob))
+			if (job->GetIgnoreCallback()(proposedJob)) {
 				return true;
+			}
 		}
 		return false;
 	}
 
 
-	JobSystem::JobSystem(int threadCount, WorkerThreadLoop workerLoop)
+	JobSystem::JobSystem(unsigned int threadCount, WorkerThreadLoop workerLoop)
 	: _showStats(true) {
-		if (threadCount < _minimumActiveWorkers)
+		if (threadCount < _minimumActiveWorkers) {
 			threadCount = _minimumActiveWorkers;
+		}
 		WorkerLoop = workerLoop;
 		ReConfigure(threadCount);
 	}
 
 	JobSystem::~JobSystem()
 	{
-		if (_workers.size() == 0)
+		if (_workers.empty()) {
 			return;
+		}
 
 		for (Job*& leftOverJob : Shutdown()) {
 			leftOverJob->Free();
 		}
 	}
 
-	void JobSystem::ReConfigure(const int threadCount)
+	void JobSystem::ReConfigure(unsigned int threadCount)
 	{
 		if (threadCount <= 1) {
 			std::cout << "JobSystem cannot start with 0-1 workers..." << std::endl;
@@ -76,7 +80,7 @@ namespace JbSystem {
 			return;
 		}
 
-		bool firstStartup = _activeWorkerCount.load() == 0;
+		const bool firstStartup = _activeWorkerCount.load() == 0;
 
 		std::vector<Job*> jobs;
 		if (!firstStartup) {
@@ -122,7 +126,7 @@ namespace JbSystem {
 						JobSystemWorker& worker = jobSystem->_workers.at(i);
 						worker.ScheduleJob(newJob->GetId());
 						if (!worker.GiveJob(newJob, JobPriority::High)) {
-							jobSystem->SafeRescheduleJob(newJob, worker);
+							JobSystem::SafeRescheduleJob(newJob, worker);
 						}
 						iteration++;
 					}
@@ -151,15 +155,17 @@ namespace JbSystem {
 		do {
 			wasActive = false;
 			for (JobSystemWorker& worker : _workers) {
-				if (!worker._isRunning.load())
+				if (!worker._isRunning.load()) {
 					continue;
+				}
 
 				worker.RequestShutdown();
 				wasActive = true;
 			}
 
-			if (wasActive)
+			if (wasActive) {
 				continue;
+			}
 
 			// Let worker safely shutdown and complete active last job
 			for (JobSystemWorker& worker : _workers) {
@@ -205,8 +211,9 @@ namespace JbSystem {
 
 			wasActive = false;
 			for (JobSystemWorker& worker : boost::adaptors::reverse(_workers)) {
-				if (!worker.IsActive())
+				if (!worker.IsActive()) {
 					continue;
+				}
 
 				if (worker.ScheduledJobCount() == 0) {
 					continue;
@@ -218,13 +225,14 @@ namespace JbSystem {
 		} while (wasActive);
 	}
 
-	void JobSystem::ExecuteJob(const JobPriority maxTimeInvestment)
+	void JobSystem::ExecuteJob(const JobPriority& maxTimeInvestment)
 	{
 		JobSystemWorker& worker = _workers.at(GetRandomWorker());
 		Job* primedJob = TakeJobFromWorker(worker, maxTimeInvestment);
 
-		if (primedJob == nullptr)
+		if (primedJob == nullptr) {
 			return;
+		}
 
 		if (threadDepth > maxThreadDepth) { // allow a maximum recursion depth of x
 
@@ -250,7 +258,7 @@ namespace JbSystem {
 		ExecuteJob(JobPriority::Low);
 	}
 
-	int JobSystem::GetWorkerCount()
+	int JobSystem::GetWorkerCount() const
 	{
 		return _workerCount;
 	}
@@ -264,8 +272,9 @@ namespace JbSystem {
 	{
 		for (int i = 0; i < _workers.size(); i++)
 		{
-			if (&_workers.at(i) == worker)
+			if (&_workers.at(i) == worker) {
 				return i;
+			}
 		}
 		return -1;
 	}
@@ -294,7 +303,7 @@ namespace JbSystem {
 		}
 	}
 
-	JobId JobSystem::Schedule(Job* const& newJob, const JobPriority priority)
+	JobId JobSystem::Schedule(Job* const& newJob, const JobPriority& priority)
 	{
 		const JobId& jobId = newJob->GetId();
 
@@ -303,10 +312,10 @@ namespace JbSystem {
 		return Schedule(worker, newJob, priority);
 	}
 
-	JobId JobSystem::Schedule(Job* const& job, const JobPriority priority, const std::vector<JobId>& dependencies)
+	JobId JobSystem::Schedule(Job* const& job, const JobPriority& priority, const std::vector<JobId>& dependencies)
 	{
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
-		int workerId = ScheduleFutureJob(job);
+		const int workerId = ScheduleFutureJob(job);
 		ScheduleAfterJobCompletion(dependencies, priority,
 			[](auto jobsystem, auto workerId, auto job, auto priority)
 			{
@@ -315,7 +324,7 @@ namespace JbSystem {
 		return job->GetId();
 	}
 
-	const std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority priority)
+	std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority& priority)
 	{
 		return BatchScheduleJob(newjobs, priority);
 	}
@@ -336,23 +345,24 @@ namespace JbSystem {
 
 	std::vector<Job*> JobSystem::CreateParallelJob(int startIndex, int endIndex, int batchSize, void(*function)(const int&))
 	{
-		if (batchSize < 1)
+		if (batchSize < 1) {
 			batchSize = 1;
+		}
 
-		auto parallelFunction = [](auto callback, int startIndex, int endIndex)
+		auto parallelFunction = [](auto callback, int loopStartIndex, int loopEndIndex)
 		{
-			for (int& i = startIndex; i < endIndex; i++)
+			for (int& i = loopStartIndex; i < loopEndIndex; i++)
 			{
 				callback(i);
 			}
 		};
 
-		int jobStartIndex;
-		int jobEndIndex;
+		int jobStartIndex = 0;
+		int jobEndIndex = 0;
 
 		//Schedule and create lambda for all job kinds
 		int totalBatches = 0;
-		int endOfRange = endIndex - startIndex;
+		const int endOfRange = endIndex - startIndex;
 		int CurrentBatchEnd = endOfRange;
 		while (CurrentBatchEnd > batchSize) {
 			CurrentBatchEnd -= batchSize;
@@ -393,13 +403,13 @@ namespace JbSystem {
 		return workerId;
 	}
 
-	const std::vector<JobId> JobSystem::BatchScheduleJob(const std::vector<Job*>& newJobs, const JobPriority priority)
+	std::vector<JobId> JobSystem::BatchScheduleJob(const std::vector<Job*>& newJobs, const JobPriority& priority)
 	{
 		constexpr int batchSize = 10;
 		std::vector<JobId> jobIds(newJobs.size(), JobId(0));
 
 		std::vector<int> workerIds(newJobs.size(), 0);
-		auto selectWorkersJob = CreateParallelJob<std::vector<int>*, const std::vector<Job*>*, JobSystem*>(0, newJobs.size(), batchSize, 
+		auto selectWorkersJob = CreateParallelJob<std::vector<int>*, const std::vector<Job*>*, JobSystem*>(0, static_cast<int>(newJobs.size()), batchSize, 
 		[](const int& jobIndex, std::vector<int>* workerIds, const std::vector<Job*>* newJobs, JobSystem* jobsystem){
 			workerIds->at(jobIndex) = jobsystem->ScheduleFutureJob(newJobs->at(jobIndex));
 		}, &workerIds, &newJobs, this);
@@ -411,7 +421,7 @@ namespace JbSystem {
 		}
 		
 
-		auto parallelJobs = CreateParallelJob<const std::vector<Job*>*, std::vector<JobId>*, std::vector<int>*, JobPriority, JobSystem*>(0, newJobs.size(), batchSize, 
+		auto parallelJobs = CreateParallelJob<const std::vector<Job*>*, std::vector<JobId>*, std::vector<int>*, JobPriority, JobSystem*>(0, static_cast<int>(newJobs.size()), batchSize,
 			[](const int& jobIndex, const std::vector<Job*>* newjobs, std::vector<JobId>* jobIds, std::vector<int>* workerIds, JobPriority priority, JobSystem* jobSystem) {
 				jobIds->at(jobIndex) = jobSystem->Schedule(workerIds->at(jobIndex), newjobs->at(jobIndex), priority);
 			}, &newJobs, &jobIds, &workerIds, priority, this);
@@ -426,16 +436,16 @@ namespace JbSystem {
 		return jobIds;
 	}
 
-	const std::vector<int> JobSystem::BatchScheduleFutureJob(const std::vector<Job*>& newjobs)
+	std::vector<int> JobSystem::BatchScheduleFutureJob(const std::vector<Job*>& newjobs)
 	{
-		const int totalAmountOfJobs = int(newjobs.size());
+		const int totalAmountOfJobs = static_cast<int>(newjobs.size());
 		
 		std::vector<int> workerIds;
 		workerIds.resize(totalAmountOfJobs);
 
-		int workerCount = _activeWorkerCount.load();
-		int jobsPerWorker = totalAmountOfJobs / workerCount;
-		int remainer = totalAmountOfJobs % workerCount;
+		const int workerCount = _activeWorkerCount.load();
+		const int jobsPerWorker = totalAmountOfJobs / workerCount;
+		const int remainer = totalAmountOfJobs % workerCount;
 
 		for (int i = 0; i < workerCount; i++)
 		{
@@ -458,7 +468,7 @@ namespace JbSystem {
 
 		for (int i = 0; i < remainer; i++)
 		{
-			int workerId = i;
+			const int& workerId = i;
 			workerIds[totalAmountOfJobs - i - 1] = i;
 			const JobId jobId = newjobs[totalAmountOfJobs - i - 1]->GetId();
 			_workers[workerId].GiveFutureJob(jobId);
@@ -469,13 +479,13 @@ namespace JbSystem {
 		return workerIds;
 	}
 
-	const std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority priority, const std::vector<JobId>& dependencies)
+	std::vector<JobId> JobSystem::Schedule(const std::vector<Job*>& newjobs, const JobPriority& priority, const std::vector<JobId>& dependencies)
 	{
 		//Schedule jobs in the future, then when completed, schedule them for inside workers
-		std::vector<int> workerIds = BatchScheduleFutureJob(newjobs);
+		const std::vector<int> workerIds = BatchScheduleFutureJob(newjobs);
 
 		std::vector<JobId> jobIds;
-		size_t jobCount = newjobs.size();
+		const size_t jobCount = newjobs.size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
 		{
@@ -531,8 +541,9 @@ namespace JbSystem {
 	{
 		// Try check suggested worker first
 		if (jobWorker != nullptr) {
-			if (jobWorker->IsJobScheduled(jobId))
+			if (jobWorker->IsJobScheduled(jobId)) {
 				return false;
+			}
 		}
 
 		for(JobSystemWorker& currentWorker : _workers)
@@ -554,10 +565,10 @@ namespace JbSystem {
 		void* location = boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::malloc();
 
 		// Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
-		std::atomic<bool>* finished = new(location) std::atomic<bool>(false);
-		auto waitLambda = [](std::atomic<bool>* finished)
+		auto* finished = new(location) std::atomic<bool>(false);
+		auto waitLambda = [](std::atomic<bool>* jobFinished)
 		{
-			finished->store(true);
+			jobFinished->store(true);
 		};
 
 		ScheduleAfterJobCompletion({ jobId }, maximumHelpEffort, waitLambda, finished);
@@ -600,7 +611,7 @@ namespace JbSystem {
 		threadDepth++;
 	}
 
-	bool JobSystem::WaitForJobCompletion(const JobId& jobId, int maxMicroSecondsToWait, const JobPriority maximumHelpEffort)
+	bool JobSystem::WaitForJobCompletion(const JobId& jobId, int maxMicroSecondsToWait, JobPriority maximumHelpEffort)
 	{
 		assert(!JobInStack(jobId)); //Job inside workers stack, deadlock encountered!
 
@@ -636,11 +647,13 @@ namespace JbSystem {
 		}
 	}
 
-	Job* JobSystem::TakeJobFromWorker(JobSystemWorker& worker, const JobPriority maxTimeInvestment)
+	Job* JobSystem::TakeJobFromWorker(JobSystemWorker& worker, JobPriority maxTimeInvestment)
 	{
 		Job* job = worker.TryTakeJob(maxTimeInvestment);
-		if (job == nullptr) // Was not able to take a job from specific worker
+		if (job == nullptr) {
+			// Was not able to take a job from specific worker
 			return job;
+		}
 
 		assert(worker.IsJobScheduled(job->GetId()));
 		assert(!JobInStack(job->GetId()));
@@ -651,7 +664,9 @@ namespace JbSystem {
 	void JobSystem::OptimizePerformance()
 	{
 		if (!_optimizePerformance.try_lock())
+		{
 			return;
+		}
 
 		int votedWorkers = _workerCount;
 
@@ -673,17 +688,19 @@ namespace JbSystem {
 
 		int extraKnownWorkerCount = 0;
 		if (_spawnedThreadsMutex.try_lock()) {
-			extraKnownWorkerCount = _spawnedThreadsExecutingIgnoredJobs.size();
+			extraKnownWorkerCount = static_cast<int>(_spawnedThreadsExecutingIgnoredJobs.size());
 			_spawnedThreadsMutex.unlock();
 
 		}
-		int workerCount = extraKnownWorkerCount + votedWorkers;
-		double averageJobsPerWorker = (double)totalJobs / workerCount;
+		const int workerCount = extraKnownWorkerCount + votedWorkers;
+		const double averageJobsPerWorker = static_cast<double>(totalJobs / workerCount);
 
-		if (averageJobsPerWorker > maxThreadDepth / 2 && _activeWorkerCount.load() >= _workerCount && extraKnownWorkerCount <= 1)
+		if (averageJobsPerWorker > maxThreadDepth / 2 && _activeWorkerCount.load() >= _workerCount && extraKnownWorkerCount <= 1) {
 			_preventIncomingScheduleCalls.store(true);
-		else
+		}
+		else {
 			_preventIncomingScheduleCalls.store(false);
+		}
 
 		if (averageJobsPerWorker >= 1.0 && _activeWorkerCount < _workerCount && workerCount < _workerCount) {
 			_activeWorkerCount.store(_activeWorkerCount.load() + 1);
@@ -698,24 +715,27 @@ namespace JbSystem {
 		{
 			JobSystemWorker& worker = _workers.at(i);
 
-			if (!worker.IsActive())
+			if (!worker.IsActive()) {
 				worker.Start();
+			}
 		}
 
 		if (_showStats.load())
 		{
-
-			std::string outputString = "\33[2K \r JobSystem Workers: " + std::to_string(workerCount) + ", Accepting new jobs: " + std::to_string(int(!_preventIncomingScheduleCalls.load())) + ", total Jobs: " + std::to_string(totalJobs) + "  Average Jobs: " + std::to_string(averageJobsPerWorker) + "\r";
+			const std::string outputString = "\33[2K \r JobSystem Workers: " + std::to_string(workerCount) + ", Accepting new jobs: " + std::to_string(static_cast<int>(!_preventIncomingScheduleCalls.load())) + ", total Jobs: " + std::to_string(totalJobs) + "  Average Jobs: " + std::to_string(averageJobsPerWorker) + "\r";
 			std::cout << outputString;
 		}
 		
 		// In case worker 0 or 1 has stopped make sure to restart it
-		if (!_workers.at(0).IsActive())
+		if (!_workers.at(0).IsActive()) {
 			_workers.at(0).Start();
-		if (!_workers.at(1).IsActive())
+		}
+		if (!_workers.at(1).IsActive()) {
 			_workers.at(1).Start();
-		if (!_workers.at(2).IsActive())
+		}
+		if (!_workers.at(2).IsActive()) {
 			_workers.at(2).Start();
+		}
 
 		// Reschedule jobs already inside inactive workers
 		RescheduleWorkerJobsFromInActiveWorkers();
@@ -724,7 +744,7 @@ namespace JbSystem {
 
 	void JobSystem::StartAllWorkers(bool activeWorkersOnly)
 	{
-		int workerCount = activeWorkersOnly ? _activeWorkerCount.load() : _workerCount;
+		const int workerCount = activeWorkersOnly ? _activeWorkerCount.load() : _workerCount;
 		for (int i = 0; i < workerCount; i++)
 		{
 			auto& worker = _workers.at(i);
@@ -741,8 +761,9 @@ namespace JbSystem {
 		Job* job = worker.TryTakeJob(JobPriority::Low);
 		while (job != nullptr) {
 			JobSystemWorker& newWorker = _workers.at(GetRandomWorker());
-			if (&worker == &newWorker)
+			if (&worker == &newWorker) {
 				continue;
+			}
 
 			newWorker.GiveFutureJob(job->GetId());
 			Schedule(newWorker, job, JobPriority::High);
@@ -764,8 +785,9 @@ namespace JbSystem {
 
 	bool JobSystem::TryRunJob(JobSystemWorker& worker, Job*& currentJob)
 	{
-		if (currentJob == nullptr)
+		if (currentJob == nullptr) {
 			return false;
+		}
 
 		if (IsProposedJobIgnoredByJobStack(currentJob->GetId()) || currentJob->GetEmptyStackRequired()) {
 			RunJobInNewThread(worker, currentJob);
@@ -775,15 +797,16 @@ namespace JbSystem {
 		int workerIndex = 0;
 		for (int i = 0; i < _workers.size(); i++)
 		{
-			auto& currentWorker = _workers.at(i);
-			if (&currentWorker == &worker)
+			const auto& currentWorker = _workers.at(i);
+			if (&currentWorker == &worker) {
 				workerIndex = i;
+			}
 		}
 
 		for (int i = workerIndex; i < _workers.size(); i++)
 		{
 			auto& currentWorker = _workers.at(i);
-			currentWorker._jobsRequiringIgnoringMutex.lock(); // TODO optimize access to mutex, big bottleneck
+			currentWorker._jobsRequiringIgnoringMutex.lock();
 			for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
 			{
 				// Do not execute the proposed job if it's forbidden by other jobs currently being executed
@@ -798,7 +821,7 @@ namespace JbSystem {
 		for (int i = 0; i < workerIndex; i++)
 		{
 			auto& currentWorker = _workers.at(i);
-			currentWorker._jobsRequiringIgnoringMutex.lock(); // TODO optimize access to mutex, big bottleneck
+			currentWorker._jobsRequiringIgnoringMutex.lock();
 			for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
 			{
 				// Do not execute the proposed job if it's forbidden by other jobs currently being executed
@@ -824,7 +847,7 @@ namespace JbSystem {
 		const IgnoreJobCallback& callback = currentJob->GetIgnoreCallback();
 		if (callback)
 		{
-			std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
+			const std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
 			worker._jobsRequiringIgnoring.emplace(currentJob);
 		}
 
@@ -832,7 +855,7 @@ namespace JbSystem {
 
 		if (callback)
 		{
-			std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
+			const std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
 			worker._jobsRequiringIgnoring.erase(currentJob);
 		}
 
@@ -850,7 +873,7 @@ namespace JbSystem {
 
 	void JobSystem::RunJobInNewThread(JobSystemWorker& worker, Job*& currentJob)
 	{
-		JobId jobId = currentJob->GetId();
+		const JobId jobId = currentJob->GetId();
 		worker._pausedJobsMutex.lock();
 		worker._pausedJobs.emplace(jobId, JobSystemWorker::PausedJob(currentJob, worker));
 		worker._pausedJobsMutex.unlock();
@@ -872,7 +895,7 @@ namespace JbSystem {
 		// Start a new thread to execute a job to prevent deadlock
 		std::atomic<bool> startSign = false;
 		JobSystemWorker* selectedWorker = &worker;
-		std::thread emergencyWorker = std::thread([this, &startSign, selectedWorker]() mutable {
+		auto emergencyWorker = std::thread([this, &startSign, selectedWorker]() mutable {
 			allowedToLowerQueue = false;
 			while(!startSign.load()) { /* Spinlock*/ }
 			startSign.store(false);
@@ -887,7 +910,7 @@ namespace JbSystem {
 				{
 					// Find new job, but when non are left exit
 					selectedWorker->_pausedJobsMutex.lock();
-					if (selectedWorker->_pausedJobs.size() == 0) {
+					if (selectedWorker->_pausedJobs.empty()) {
 						selectedWorker->_pausedJobsMutex.unlock();
 
 						// Select a new worker
@@ -907,7 +930,7 @@ namespace JbSystem {
 				}
 			}
 
-			std::thread::id currentThreadId = std::this_thread::get_id();
+			const std::thread::id currentThreadId = std::this_thread::get_id();
 			auto removeThread = [](JobSystem* jobSystem, std::thread::id id, auto thisFunction) -> void {
 				if (!jobSystem->_spawnedThreadsMutex.try_lock()) {
 					Job* destoryThreadJob = JobSystem::CreateJobWithParams(thisFunction, jobSystem, id, thisFunction);
@@ -917,8 +940,9 @@ namespace JbSystem {
 				
 				// When lock was aquired we can wait for the other thread to exit
 				std::thread& threadToJoin = jobSystem->_spawnedThreadsExecutingIgnoredJobs.at(id);
-				if(threadToJoin.joinable())
+				if (threadToJoin.joinable()) {
 					threadToJoin.join();
+				}
 				jobSystem->_spawnedThreadsExecutingIgnoredJobs.erase(id);
 				jobSystem->_spawnedThreadsMutex.unlock();
 			};
@@ -928,7 +952,7 @@ namespace JbSystem {
 			Schedule(destoryThreadJob, JobPriority::Normal);
 			}
 		);
-		std::thread::id workerThreadId = emergencyWorker.get_id();
+		const std::thread::id workerThreadId = emergencyWorker.get_id();
 		_spawnedThreadsMutex.lock();
 		_spawnedThreadsExecutingIgnoredJobs.emplace(workerThreadId, std::move(emergencyWorker));
 		_spawnedThreadsMutex.unlock();
@@ -939,12 +963,13 @@ namespace JbSystem {
 	int JobSystem::GetRandomWorker()
 	{
 		randomWorkerIndex++;
-		if (randomWorkerIndex >= _activeWorkerCount.load())
+		if (randomWorkerIndex >= _activeWorkerCount.load()) {
 			randomWorkerIndex = 0;
+		}
 		return randomWorkerIndex;
 	}
 
-	JobId JobSystem::Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority priority)
+	JobId JobSystem::Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority& priority)
 	{
 		const JobId& id = newJob->GetId();
 
@@ -978,8 +1003,9 @@ namespace JbSystem {
 
 		while (true) {
 			// Try to schedule in either one of the required threads, in case it's not possible throw error
-			if (!oldWorker.IsActive())
+			if (!oldWorker.IsActive()) {
 				oldWorker.Start();
+			}
 
 			assert(!oldWorker.IsJobInQueue(id));
 			assert(oldWorker.IsJobScheduled(id));
@@ -990,10 +1016,10 @@ namespace JbSystem {
 		}
 	}
 
-	const std::vector<JobId> JobSystem::Schedule(const std::vector<int>& workerIds, const JobPriority priority, const std::vector<Job*>& newjobs)
+	std::vector<JobId> JobSystem::Schedule(const std::vector<int>& workerIds, const JobPriority& priority, const std::vector<Job*>& newjobs)
 	{
 		std::vector<JobId> jobIds;
-		size_t jobCount = newjobs.size();
+		const size_t jobCount = newjobs.size();
 		jobIds.reserve(jobCount);
 		for (size_t i = 0; i < jobCount; i++)
 		{
@@ -1012,8 +1038,9 @@ namespace JbSystem {
 			JobSystemWorker& worker = _workers.at(i);
 			while (worker.ScheduledJobCount() > 0) {
 				Job* job = worker.TryTakeJob(JobPriority::Low);
-				if (job == nullptr)
+				if (job == nullptr) {
 					continue;
+				}
 
 				worker.UnScheduleJob(job->GetId());
 				jobs.emplace_back(job);
@@ -1025,12 +1052,13 @@ namespace JbSystem {
 	void JobSystem::MaybeOptimize()
 	{
 		optimizeInCycles--;
-		if (optimizeInCycles > 0)
+		if (optimizeInCycles > 0) {
 			return;
+		}
 		optimizeInCycles = maxOptimizeInCycles;
 
 		// Optimize performance once in a while
-		int remaining = _jobExecutionsTillOptimization.load();
+		const int remaining = _jobExecutionsTillOptimization.load();
 		_jobExecutionsTillOptimization.store(_jobExecutionsTillOptimization.load() - 1);
 		if (remaining < 1) {
 			_jobExecutionsTillOptimization.store(_maxJobExecutionsBeforePerformanceOptimization);
@@ -1039,11 +1067,13 @@ namespace JbSystem {
 	}
 	void JobSystem::MaybeHelpLowerQueue(const JobPriority& priority)
 	{
-		if (!allowedToLowerQueue)
+		if (!allowedToLowerQueue) {
 			return;
+		}
 
-		if (!_preventIncomingScheduleCalls.load())
+		if (!_preventIncomingScheduleCalls.load()) {
 			return;
+		}
 		
 		maybeLowerWorkDepth++;
 		if (maybeLowerWorkDepth % 2 == 1) {
@@ -1052,7 +1082,7 @@ namespace JbSystem {
 		maybeLowerWorkDepth--;
 	}
 	
-	JobId JobSystem::Schedule(const int& workerId, Job* const& newJob, const JobPriority priority)
+	JobId JobSystem::Schedule(const int& workerId, Job* const& newJob, const JobPriority& priority)
 	{
 		return Schedule(_workers.at(workerId), newJob, priority);
 	}
