@@ -171,6 +171,9 @@ namespace JbSystem {
 
 		void WaitForJobsAndShutdown();
 
+		void OptimizePerformance();
+		void MaybeOptimize();
+
 		/// <summary>
 		/// is the job system active or not
 		/// </summary>
@@ -196,7 +199,6 @@ namespace JbSystem {
 
 		void Cleanup();
 
-		void OptimizePerformance();
 
 		bool RescheduleWorkerJobs(JobSystemWorker& worker);
 		void RescheduleWorkerJobsFromInActiveWorkers();
@@ -233,7 +235,6 @@ namespace JbSystem {
 		/// <returns></returns>
 		std::vector<Job*> StealAllJobsFromWorkers();
 
-		void MaybeOptimize();
 		void MaybeHelpLowerQueue(const JobPriority& priority);
 
 		std::atomic<int> _activeWorkerCount = 0;
