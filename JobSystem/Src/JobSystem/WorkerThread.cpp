@@ -194,6 +194,9 @@ namespace JbSystem {
 	#else
 		if(!_shutdownRequested.load()){
 			Active.store(true);
+			if (_worker.joinable()) {
+				_worker.join();
+			}
 			_worker = std::thread([this](JobSystemWorker* worker) {
 				const std::unique_lock ul(_isRunningMutex);
 				_isRunning.store(true);
