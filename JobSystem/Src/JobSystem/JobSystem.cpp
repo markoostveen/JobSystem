@@ -939,6 +939,11 @@ namespace JbSystem {
 				}
 				
 				// When lock was aquired we can wait for the other thread to exit
+				if (!jobSystem->_spawnedThreadsExecutingIgnoredJobs.contains(id)) {
+					jobSystem->_spawnedThreadsMutex.unlock();
+					return;
+				}
+
 				std::thread& threadToJoin = jobSystem->_spawnedThreadsExecutingIgnoredJobs.at(id);
 				if (threadToJoin.joinable()) {
 					threadToJoin.join();
