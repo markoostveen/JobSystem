@@ -333,9 +333,9 @@ namespace JbSystem {
 	{
 		struct VoidJobTag {};
 		void* location = boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::malloc();
-		auto deconstructorCallback = [](JobSystemVoidJob* const& job) { boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::free(job); };
+		auto destructorCallback = [](JobSystemVoidJob* const& job) { boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::free(job); };
 
-		return new(location) JobSystemVoidJob(function, deconstructorCallback);
+		return new(location) JobSystemVoidJob(function, destructorCallback);
 	}
 
 	void JobSystem::DestroyNonScheduledJob(Job*& job)
