@@ -9,6 +9,10 @@ namespace JbSystem {
 		mutex() : _flag(false) {
 
 		}
+		mutex(mutex&&) = delete;
+		mutex(const mutex&) = delete;
+		mutex operator=(const mutex&) = delete;
+		mutex operator=(mutex&&) = delete;
 
 		~mutex() {
 			unlock();
