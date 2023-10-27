@@ -14,11 +14,11 @@ namespace JbSystem {
 		mutex operator=(const mutex&) = delete;
 		mutex operator=(mutex&&) = delete;
 
-		~mutex() {
+		~mutex() noexcept {
 			unlock();
 		}
 
-		bool try_lock() {
+		bool try_lock() noexcept {
 			if (_flag.exchange(true, std::memory_order_relaxed)) {
 				return false;
 			}
@@ -26,12 +26,12 @@ namespace JbSystem {
 			return true;
 		}
 
-		void lock()
+		void lock() noexcept
 		{
 			while (!try_lock()) {}
 		}
 
-		void unlock()
+		void unlock() noexcept
 		{
 			std::atomic_thread_fence(std::memory_order_release);
 			_flag.store(false, std::memory_order_relaxed);
