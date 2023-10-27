@@ -27,7 +27,12 @@ namespace JbSystem {
 
 	public:
 		
-		JobSystem(unsigned int threadCount = std::thread::hardware_concurrency() - 1, WorkerThreadLoop workerLoop = [](JobSystemWorker* worker) { worker->ThreadLoop(); });
+		JobSystem(const JobSystem&) = delete;
+		JobSystem(JobSystem&&) = delete;
+		JobSystem& operator=(JobSystem&&) = delete;
+		JobSystem& operator=(const JobSystem&) = delete;
+
+		explicit JobSystem(unsigned int threadCount = std::thread::hardware_concurrency() - 1, WorkerThreadLoop workerLoop = [](JobSystemWorker* worker) { worker->ThreadLoop(); });
 		~JobSystem();
 
 		/// <summary>

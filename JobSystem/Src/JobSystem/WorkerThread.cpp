@@ -137,6 +137,28 @@ namespace JbSystem {
 		Active.store(false);
 	}
 
+	JobSystemWorker::JobSystemWorker(JobSystemWorker&& other) noexcept
+		: _jobsystem(other._jobsystem),
+		_shutdownRequested(other._shutdownRequested.load()),
+		_highPriorityTaskQueue(std::move(other._highPriorityTaskQueue)),
+		_normalPriorityTaskQueue(std::move(other._normalPriorityTaskQueue)),
+		_lowPriorityTaskQueue(std::move(other._lowPriorityTaskQueue)),
+		_scheduledJobs(std::move(other._scheduledJobs)),
+		_isRunning(other._isRunning.load()),
+		_worker(std::move(other._worker)),
+		_isBusy(other._isBusy.load()),
+		_jobsRequiringIgnoring(std::move(other._jobsRequiringIgnoring)),
+		_pausedJobs(std::move(other._pausedJobs)),
+		Active(false)
+	{
+		assert(!other.Active); // While moving threads should not be active
+
+		other._jobsystem = nullptr;
+		if (other._worker.joinable()) {
+			other._worker.detach();
+		}
+	}
+
 	JobSystemWorker::~JobSystemWorker()
 	{
 		if (_worker.get_id() != std::thread::id()) {
