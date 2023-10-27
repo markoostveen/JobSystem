@@ -82,29 +82,24 @@ namespace JbSystem {
 
 		void KeepAliveLoop();
 
-		JobSystem* _jobsystem;
+        JobSystem* _jobsystem;
+        std::thread _worker;
+        std::deque<Job*> _highPriorityTaskQueue;
+        std::deque<Job*> _normalPriorityTaskQueue;
+        std::deque<Job*> _lowPriorityTaskQueue;
 
-		std::atomic<bool> _shutdownRequested;
+        std::unordered_set<int> _scheduledJobs;
+        std::unordered_set<Job*> _jobsRequiringIgnoring; // DeadLock prevention
+        std::unordered_map<JobId, PausedJob> _pausedJobs; // DeadLock prevention
 
-		mutex _modifyingThread;
-		std::deque<Job*> _highPriorityTaskQueue;
-		std::deque<Job*> _normalPriorityTaskQueue;
-		std::deque<Job*> _lowPriorityTaskQueue;
+        std::atomic<bool> _shutdownRequested;
+        std::atomic<bool> _isRunning;
+        std::atomic<bool> _isBusy;
 
-		mutex _scheduledJobsMutex;
-		std::unordered_set<int> _scheduledJobs;
-
-		mutex _isRunningMutex;
-		std::atomic<bool> _isRunning;
-		std::thread _worker;
-
-		std::atomic<bool> _isBusy;
-
-		// DeadLock prevention
-		JbSystem::mutex _jobsRequiringIgnoringMutex;
-		std::unordered_set<Job*> _jobsRequiringIgnoring;
-		JbSystem::mutex _pausedJobsMutex;
-		std::unordered_map<JobId, PausedJob> _pausedJobs;
-
+        JbSystem::mutex _modifyingThread;
+        JbSystem::mutex _scheduledJobsMutex;
+        JbSystem::mutex _isRunningMutex;
+        JbSystem::mutex _jobsRequiringIgnoringMutex; // DeadLock prevention
+        JbSystem::mutex _pausedJobsMutex; // DeadLock prevention
 	};
 }
