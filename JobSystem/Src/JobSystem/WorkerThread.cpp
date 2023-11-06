@@ -81,7 +81,7 @@ namespace JbSystem {
 		
 			// Check if other works are active
 			bool otherWorkersActive = false;
-			for (size_t i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
+			for (int i = 0; i < _jobsystem->_activeWorkerCount.load(); i++)
 			{
 				JobSystemWorker& worker = _jobsystem->_workers[i];
 				if (worker.IsActive() && this != &worker) {
@@ -123,10 +123,10 @@ namespace JbSystem {
 	}
 
 	JobSystemWorker::JobSystemWorker(JobSystem* jobsystem)
-		: _jobsystem(jobsystem), Active(false), _isRunning(false), _shutdownRequested(false),
-		_modifyingThread(), _highPriorityTaskQueue(), _normalPriorityTaskQueue(), _lowPriorityTaskQueue(),
-		_scheduledJobsMutex(), _scheduledJobs(),
-		_isRunningMutex(), _worker(),
+		: Active(false),
+		_jobsystem(jobsystem),
+		_shutdownRequested(false),
+		_isRunning(false),
 		_isBusy(false)
 	{
 	}
@@ -379,7 +379,7 @@ namespace JbSystem {
 	void JobSystemWorker::GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size)
 	{
 		_scheduledJobsMutex.lock();
-		for (size_t i = 0; i < size; i++)
+		for (int i = 0; i < size; i++)
 		{
 			_scheduledJobs.emplace(newjobs[startIndex + i]->GetId().ID());
 		}

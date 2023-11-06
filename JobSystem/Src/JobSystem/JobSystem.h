@@ -243,7 +243,7 @@ namespace JbSystem {
 		void MaybeHelpLowerQueue(const JobPriority& priority);
 
 		std::atomic<int> _activeWorkerCount = 0;
-		const int _minimumActiveWorkers = 3;
+		const uint32_t _minimumActiveWorkers = 3;
 		int _workerCount = 0;
 		std::vector<JobSystemWorker> _workers;
 
@@ -282,11 +282,11 @@ namespace JbSystem {
 
 
 
-		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int loopStartIndex, int loopEndIndex, Args ...args)
+		auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int loopStartIndex, int loopEndIndex, Args ... parallelArgs)
 		{
 			for (int& i = loopStartIndex; i < loopEndIndex; i++)
 			{
-				callback(i, std::forward<Args>(args)...);
+				callback(i, std::forward<Args>(parallelArgs)...);
 			}
 		};
 
@@ -332,9 +332,9 @@ namespace JbSystem {
 		const int workerId = ScheduleFutureJob(job);
 
 		ScheduleAfterJobCompletion(dependencyArray, priority,
-			[](JobSystem* jobSystem, int workerId, Job* callbackJob, JobPriority priority)
+			[](JobSystem* jobSystem, int scheduleWorkerId, Job* callbackJob, JobPriority reschedulePriority)
 			{
-				jobSystem->Schedule(workerId, callbackJob, priority);
+				jobSystem->Schedule(scheduleWorkerId, callbackJob, reschedulePriority);
 			}, this, workerId, job, priority);
 		return job->GetId();
 	}
@@ -348,9 +348,9 @@ namespace JbSystem {
 		auto workerIds = BatchScheduleFutureJob(newjobs);
 
 		WaitForJobCompletion(dependencyArray,
-			[](auto jobSystem, auto workerIds, auto callbackJobs, JobPriority priority)
+			[](auto jobSystem, auto scheduleWorkerIds, auto callbackJobs, JobPriority schedulePriority)
 			{
-				jobSystem->Schedule(workerIds, callbackJobs, priority);
+				jobSystem->Schedule(scheduleWorkerIds, callbackJobs, schedulePriority);
 			}, this, workerIds, newjobs, priority);
 
 		std::vector<JobId> jobIds;

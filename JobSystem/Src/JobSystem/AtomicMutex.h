@@ -6,14 +6,11 @@ namespace JbSystem {
 	class mutex {
 	public:
 
-		mutex() : _flag(false) {
-
-		}
-		mutex(mutex&&) = delete;
+		mutex() : _flag(false) {}
 		mutex(const mutex&) = delete;
-		mutex operator=(const mutex&) = delete;
-		mutex operator=(mutex&&) = delete;
-
+		mutex(mutex&&) = delete;
+		mutex& operator=(const mutex&) = delete;
+		mutex& operator=(mutex&&) = delete;
 		~mutex() noexcept {
 			unlock();
 		}

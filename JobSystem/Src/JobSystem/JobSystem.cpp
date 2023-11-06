@@ -104,7 +104,7 @@ namespace JbSystem {
 		}
 
 		// Start critical minimum workers, others will start when job queue grows
-		for (int i = 0; i < _minimumActiveWorkers; i++)
+		for (uint32_t i = 0; i < _minimumActiveWorkers; i++)
 		{
 			// set callback function for worker threads to call the execute job on the job system
 			_workers[i].Start();
@@ -270,10 +270,10 @@ namespace JbSystem {
 
 	int JobSystem::GetWorkerId(JobSystemWorker* worker)
 	{
-		for (int i = 0; i < _workers.size(); i++)
+		for (size_t i = 0; i < _workers.size(); i++)
 		{
 			if (&_workers.at(i) == worker) {
-				return i;
+				return static_cast<int>(i);
 			}
 		}
 		return -1;
@@ -411,7 +411,7 @@ namespace JbSystem {
 		std::vector<int> workerIds(newJobs.size(), 0);
 		auto selectWorkersJob = CreateParallelJob<std::vector<int>*, const std::vector<Job*>*, JobSystem*>(0, static_cast<int>(newJobs.size()), batchSize, 
 		[](const int& jobIndex, std::vector<int>* workerIds, const std::vector<Job*>* newJobs, JobSystem* jobsystem){
-			workerIds->at(jobIndex) = jobsystem->ScheduleFutureJob(newJobs->at(jobIndex));
+			workerIds->at(static_cast<size_t>(jobIndex)) = jobsystem->ScheduleFutureJob(newJobs->at(jobIndex));
 		}, &workerIds, &newJobs, this);
 
 		auto selectWorkerJobIds = std::vector<JobId>(selectWorkersJob.size(), JobId(0));
@@ -422,8 +422,8 @@ namespace JbSystem {
 		
 
 		auto parallelJobs = CreateParallelJob<const std::vector<Job*>*, std::vector<JobId>*, std::vector<int>*, JobPriority, JobSystem*>(0, static_cast<int>(newJobs.size()), batchSize,
-			[](const int& jobIndex, const std::vector<Job*>* newjobs, std::vector<JobId>* jobIds, std::vector<int>* workerIds, JobPriority priority, JobSystem* jobSystem) {
-				jobIds->at(jobIndex) = jobSystem->Schedule(workerIds->at(jobIndex), newjobs->at(jobIndex), priority);
+			[](const int& jobIndex, const std::vector<Job*>* newjobs, std::vector<JobId>* jobIds, std::vector<int>* workerIds, JobPriority schedulingPriority, JobSystem* jobSystem) {
+				jobIds->at(jobIndex) = jobSystem->Schedule(workerIds->at(static_cast<size_t>(jobIndex)), newjobs->at(static_cast<size_t>(jobIndex)), schedulingPriority);
 			}, &newJobs, &jobIds, &workerIds, priority, this);
 
 		std::vector<JobId> schedulingJobIds(parallelJobs.size(), JobId(0));
@@ -504,9 +504,9 @@ namespace JbSystem {
 			const std::vector<Job*> Newjobs;
 		};
 
-		auto scheduleCallback = [](JobSystem* jobSystem, JobData* jobData, const JobPriority priority)
+		auto scheduleCallback = [](JobSystem* jobSystem, JobData* jobData, const JobPriority schedulingPriority)
 		{
-			jobSystem->Schedule(jobData->WorkerIds, priority, jobData->Newjobs);
+			jobSystem->Schedule(jobData->WorkerIds, schedulingPriority, jobData->Newjobs);
 			delete jobData;
 		};
 
@@ -693,7 +693,7 @@ namespace JbSystem {
 
 		}
 		const int workerCount = extraKnownWorkerCount + votedWorkers;
-		const double averageJobsPerWorker = static_cast<double>(totalJobs / workerCount);
+		const auto averageJobsPerWorker = static_cast<double>(totalJobs / workerCount);
 
 		if (averageJobsPerWorker > maxThreadDepth / 2 && _activeWorkerCount.load() >= _workerCount && extraKnownWorkerCount <= 1) {
 			_preventIncomingScheduleCalls.store(true);
@@ -705,7 +705,7 @@ namespace JbSystem {
 		if (averageJobsPerWorker >= 1.0 && _activeWorkerCount < _workerCount && workerCount < _workerCount) {
 			_activeWorkerCount.store(_activeWorkerCount.load() + 1);
 		}
-		else if (_activeWorkerCount > _minimumActiveWorkers) {
+		else if (static_cast<uint32_t>(_activeWorkerCount.load()) > _minimumActiveWorkers) {
 			_activeWorkerCount.store(_activeWorkerCount.load() - 1);
 		}
 
@@ -794,8 +794,8 @@ namespace JbSystem {
 			return false;
 		}
 
-		int workerIndex = 0;
-		for (int i = 0; i < _workers.size(); i++)
+		size_t workerIndex = 0;
+		for (size_t i = 0; i < _workers.size(); i++)
 		{
 			const auto& currentWorker = _workers.at(i);
 			if (&currentWorker == &worker) {
@@ -803,7 +803,7 @@ namespace JbSystem {
 			}
 		}
 
-		for (int i = workerIndex; i < _workers.size(); i++)
+		for (size_t i = workerIndex; i < _workers.size(); i++)
 		{
 			auto& currentWorker = _workers.at(i);
 			currentWorker._jobsRequiringIgnoringMutex.lock();
@@ -818,7 +818,7 @@ namespace JbSystem {
 			}
 			currentWorker._jobsRequiringIgnoringMutex.unlock();
 		}
-		for (int i = 0; i < workerIndex; i++)
+		for (size_t i = 0; i < workerIndex; i++)
 		{
 			auto& currentWorker = _workers.at(i);
 			currentWorker._jobsRequiringIgnoringMutex.lock();
