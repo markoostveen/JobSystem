@@ -138,18 +138,18 @@ namespace JbSystem {
 	}
 
 	JobSystemWorker::JobSystemWorker(JobSystemWorker&& other) noexcept
-		: _jobsystem(other._jobsystem),
-		_shutdownRequested(other._shutdownRequested.load()),
+		: Active(false),
+		_jobsystem(other._jobsystem),
+		_worker(std::move(other._worker)),
 		_highPriorityTaskQueue(std::move(other._highPriorityTaskQueue)),
 		_normalPriorityTaskQueue(std::move(other._normalPriorityTaskQueue)),
 		_lowPriorityTaskQueue(std::move(other._lowPriorityTaskQueue)),
 		_scheduledJobs(std::move(other._scheduledJobs)),
-		_isRunning(other._isRunning.load()),
-		_worker(std::move(other._worker)),
-		_isBusy(other._isBusy.load()),
 		_jobsRequiringIgnoring(std::move(other._jobsRequiringIgnoring)),
 		_pausedJobs(std::move(other._pausedJobs)),
-		Active(false)
+		_shutdownRequested(other._shutdownRequested.load()),
+		_isRunning(other._isRunning.load()),
+		_isBusy(other._isBusy.load())
 	{
 		assert(!other.Active); // While moving threads should not be active
 
