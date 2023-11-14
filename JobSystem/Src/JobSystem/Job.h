@@ -5,211 +5,231 @@
 #include <memory>
 #include <type_traits>
 
-namespace JbSystem {
-	enum class JobPriority {
-		/// <summary>
-		/// Doesn't represent any job
-		/// </summary>
-		None = -1,
+namespace JbSystem
+{
+    enum class JobPriority
+    {
+        /// <summary>
+        /// Doesn't represent any job
+        /// </summary>
+        None = -1,
 
-		/// <summary>
-		/// For your smallest jobs
-		/// </summary>
-		High = 0,
-		/// <summary>
-		/// For jobs either depended on short jobs, or taking a little bit longer
-		/// </summary>
-		Normal = 1,
-		/// <summary>
-		/// For lengthy jobs, like loading files from places
-		/// </summary>
-		Low = 2
-	};
+        /// <summary>
+        /// For your smallest jobs
+        /// </summary>
+        High = 0,
+        /// <summary>
+        /// For jobs either depended on short jobs, or taking a little bit longer
+        /// </summary>
+        Normal = 1,
+        /// <summary>
+        /// For lengthy jobs, like loading files from places
+        /// </summary>
+        Low = 2
+    };
 
-	class JobId {
-		// New kind of Id based on int, but without implicit conversion as it should not be used that way
+    class JobId
+    {
+        // New kind of Id based on int, but without implicit conversion as it should not be used that way
 
-	public:
-		explicit JobId(const int& Id);
-		bool operator==(const JobId&) const = default;
+      public:
+        explicit JobId(const int& Id);
+        bool operator==(const JobId&) const = default;
 
-		[[nodiscard]] const int& ID() const;
+        [[nodiscard]] const int& ID() const;
 
-	private:
-		int _id;
-	};
+      private:
+        int _id;
+    };
 
-	/// <summary>
-	/// Callback for the jobsystem to call into when checking if it's okay to execute another job when this job is being executed
-	/// </summary>
-	using IgnoreJobCallback = std::function<bool(const JobId& proposedJob)>;
+    /// <summary>
+    /// Callback for the jobsystem to call into when checking if it's okay to execute another job when this job is being executed
+    /// </summary>
+    using IgnoreJobCallback = std::function<bool(const JobId& proposedJob)>;
 
-	class Job {
-	public:
-		Job() = delete;
-		Job(const Job&) = delete;
-		Job(Job&&) = delete;
-		Job& operator=(const Job&) = delete;
-		Job& operator=(Job&&) = delete;
-		virtual ~Job() = default;
+    class Job
+    {
+      public:
+        Job()                      = delete;
+        Job(const Job&)            = delete;
+        Job(Job&&)                 = delete;
+        Job& operator=(const Job&) = delete;
+        Job& operator=(Job&&)      = delete;
+        virtual ~Job()             = default;
 
-		inline void Free() {
-			_destructorfunction(this);
-		}
-		
-		[[nodiscard]] JobId GetId() const; // Return copy it needs to be available after Job object get's destroyed
+        inline void Free() { _destructorfunction(this); }
 
-		inline void Run() const {
-			_basefunction(this);
-		}
+        [[nodiscard]] JobId GetId() const; // Return copy it needs to be available after Job object get's destroyed
 
-		void SetIgnoreCallback(const IgnoreJobCallback& callback);
-		[[nodiscard]] const IgnoreJobCallback& GetIgnoreCallback() const;
+        inline void Run() const { _basefunction(this); }
 
-		void SetEmptyStackRequired(bool emptyStackRequired);
-		[[nodiscard]] const bool& GetEmptyStackRequired() const;
+        void SetIgnoreCallback(const IgnoreJobCallback& callback);
+        [[nodiscard]] const IgnoreJobCallback& GetIgnoreCallback() const;
 
-		static JobId RequestUniqueID();
+        void SetEmptyStackRequired(bool emptyStackRequired);
+        [[nodiscard]] const bool& GetEmptyStackRequired() const;
 
-	protected:
-		typedef void(*Function)(const Job* const&);
-		typedef void(*DestructorFunction)(Job* const&);
+        static JobId RequestUniqueID();
 
-		Job(const JobId& id, const Function& callback, const DestructorFunction& destructorfunction);
+      protected:
+        typedef void (*Function)(const Job* const&);
+        typedef void (*DestructorFunction)(Job* const&);
 
-		const Function _basefunction;
-		const DestructorFunction _destructorfunction;
-		const JobId _id;
-		IgnoreJobCallback _ignoreCallback;
-		bool _requireEmptyJobStack;
-	};
+        Job(const JobId& id, const Function& callback, const DestructorFunction& destructorfunction);
 
-	//function with parameters
-	template<class... Args>
-	class JobWithParameters : public Job {
-		using Parameters = std::tuple<Args...>;
-	public:
-		typedef void(*Function)(Args...);
+        const Function _basefunction;
+        const DestructorFunction _destructorfunction;
+        const JobId _id;
+        IgnoreJobCallback _ignoreCallback;
+        bool _requireEmptyJobStack;
+    };
 
-		JobWithParameters() = delete;
-		JobWithParameters(const JobWithParameters&) = delete;
-		JobWithParameters(JobWithParameters&&) = delete;
-		JobWithParameters& operator=(const JobWithParameters&) = delete;
-		JobWithParameters& operator=(JobWithParameters&&) = delete;
-		~JobWithParameters() override = default;
+    // function with parameters
+    template <class... Args> class JobWithParameters : public Job
+    {
+        using Parameters = std::tuple<Args...>;
 
-		inline void Free() { delete this; };
+      public:
+        typedef void (*Function)(Args...);
 
-		explicit JobWithParameters(const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, destructorFunction, parameters...) {}
-		explicit JobWithParameters(const Function& function, Args... parameters) : JobWithParameters(Job::RequestUniqueID(), function, [](Job* base) { static_cast<JobWithParameters<Args...>*>(base)->Free(); }, parameters...) {}
-		inline void Run() const {
-			std::apply(_function, _parameters);
-		}
+        JobWithParameters()                                    = delete;
+        JobWithParameters(const JobWithParameters&)            = delete;
+        JobWithParameters(JobWithParameters&&)                 = delete;
+        JobWithParameters& operator=(const JobWithParameters&) = delete;
+        JobWithParameters& operator=(JobWithParameters&&)      = delete;
+        ~JobWithParameters() override                          = default;
 
-	private:
-		JobWithParameters(const JobId& id, const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters)
-			: Job(id,
-				[](const Job* const& base) { static_cast<const JobWithParameters<Args...>*>(base)->Run(); },
-				destructorFunction),
-			_function(function), _parameters(parameters...) {
-		}
+        inline void Free() { delete this; };
 
-		const Function _function;
-		const Parameters _parameters;
-	};
+        explicit JobWithParameters(const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters) :
+            JobWithParameters(Job::RequestUniqueID(), function, destructorFunction, parameters...)
+        {
+        }
+        explicit JobWithParameters(const Function& function, Args... parameters) :
+            JobWithParameters(
+                Job::RequestUniqueID(), function, [](Job* base) { static_cast<JobWithParameters<Args...>*>(base)->Free(); }, parameters...)
+        {
+        }
+        inline void Run() const { std::apply(_function, _parameters); }
 
-	template<class... Args>
-	class JobSystemWithParametersJob : public JobWithParameters<Args...> {
-	public:
-		struct Tag {};
-		typedef void(*DeconstructorCallback)(JobSystemWithParametersJob* const&);
+      private:
+        JobWithParameters(
+            const JobId& id, const Function& function, const Job::DestructorFunction& destructorFunction, Args... parameters) :
+            Job(
+                id, [](const Job* const& base) { static_cast<const JobWithParameters<Args...>*>(base)->Run(); }, destructorFunction),
+            _function(function),
+            _parameters(parameters...)
+        {
+        }
 
-		JobSystemWithParametersJob() = delete;
-		JobSystemWithParametersJob(const JobSystemWithParametersJob&) = delete;
-		JobSystemWithParametersJob(JobSystemWithParametersJob&&) = delete;
-		JobSystemWithParametersJob& operator=(const JobSystemWithParametersJob&) = delete;
-		JobSystemWithParametersJob& operator=(JobSystemWithParametersJob&&) = delete;
-		~JobSystemWithParametersJob() override = default;
+        const Function _function;
+        const Parameters _parameters;
+    };
 
-		inline void Free() {
-			_deconstructorCallback(this);
-		}
+    template <class... Args> class JobSystemWithParametersJob : public JobWithParameters<Args...>
+    {
+      public:
+        struct Tag
+        {
+        };
+        typedef void (*DeconstructorCallback)(JobSystemWithParametersJob* const&);
 
-		explicit JobSystemWithParametersJob(const typename JobWithParameters<Args...>::Function& function, const DeconstructorCallback& deconstructorCallback, Args... parameters)
-			: JobWithParameters<Args...>(function, [](Job* const& base) { static_cast<JobSystemWithParametersJob*>(base)->Free(); }, parameters...), _deconstructorCallback(deconstructorCallback) {}
+        JobSystemWithParametersJob()                                             = delete;
+        JobSystemWithParametersJob(const JobSystemWithParametersJob&)            = delete;
+        JobSystemWithParametersJob(JobSystemWithParametersJob&&)                 = delete;
+        JobSystemWithParametersJob& operator=(const JobSystemWithParametersJob&) = delete;
+        JobSystemWithParametersJob& operator=(JobSystemWithParametersJob&&)      = delete;
+        ~JobSystemWithParametersJob() override                                   = default;
 
-	private:
-		const DeconstructorCallback _deconstructorCallback;
-	};
+        inline void Free() { _deconstructorCallback(this); }
 
-	//void function
-	class JobVoid : public Job {
-	public:
-		typedef void(*Function)();
+        explicit JobSystemWithParametersJob(
+            const typename JobWithParameters<Args...>::Function& function, const DeconstructorCallback& deconstructorCallback,
+            Args... parameters) :
+            JobWithParameters<Args...>(
+                function, [](Job* const& base) { static_cast<JobSystemWithParametersJob*>(base)->Free(); }, parameters...),
+            _deconstructorCallback(deconstructorCallback)
+        {
+        }
 
-		JobVoid() = delete;
-		JobVoid(const JobVoid&) = delete;
-		JobVoid(JobVoid&&) = delete;
-		JobVoid& operator=(const JobVoid&) = delete;
-		JobVoid& operator=(JobVoid&&) = delete;
-		~JobVoid() override = default;
+      private:
+        const DeconstructorCallback _deconstructorCallback;
+    };
 
-		inline void Free() { delete this; };
+    // void function
+    class JobVoid : public Job
+    {
+      public:
+        typedef void (*Function)();
 
-		explicit JobVoid(const Function& function, const Job::DestructorFunction& destructorFunction) : JobVoid(Job::RequestUniqueID(), function, destructorFunction) {}
-		explicit JobVoid(const Function& function) : JobVoid(Job::RequestUniqueID(), function, [](Job* const& base) { static_cast<JobVoid*>(base)->Free(); }) {}
+        JobVoid()                          = delete;
+        JobVoid(const JobVoid&)            = delete;
+        JobVoid(JobVoid&&)                 = delete;
+        JobVoid& operator=(const JobVoid&) = delete;
+        JobVoid& operator=(JobVoid&&)      = delete;
+        ~JobVoid() override                = default;
 
-		inline void Run() const {
-			_function();
-		}
+        inline void Free() { delete this; };
 
-	private:
-		JobVoid(const JobId& id, const Function& function, const Job::DestructorFunction& destructorFunction)
-			: Job(id,
-				[](const Job* const& base) { static_cast<const JobVoid*>(base)->Run(); },
-				destructorFunction),
-			_function(function) {
-		}
+        explicit JobVoid(const Function& function, const Job::DestructorFunction& destructorFunction) :
+            JobVoid(Job::RequestUniqueID(), function, destructorFunction)
+        {
+        }
+        explicit JobVoid(const Function& function) :
+            JobVoid(Job::RequestUniqueID(), function, [](Job* const& base) { static_cast<JobVoid*>(base)->Free(); })
+        {
+        }
 
-		JobVoid(const Function& function, const Job::Function& baseFunction, const Job::DestructorFunction& destructorFunction, const JobId& id)
-			: Job(id, baseFunction, destructorFunction), _function(function) {
-		}
+        inline void Run() const { _function(); }
 
-		const Function _function;
-	};
+      private:
+        JobVoid(const JobId& id, const Function& function, const Job::DestructorFunction& destructorFunction) :
+            Job(
+                id, [](const Job* const& base) { static_cast<const JobVoid*>(base)->Run(); }, destructorFunction),
+            _function(function)
+        {
+        }
 
-	class JobSystemVoidJob : public JobVoid {
-	public:
-		typedef void(*DeconstructorCallback)(JobSystemVoidJob* const&);
+        JobVoid(
+            const Function& function, const Job::Function& baseFunction, const Job::DestructorFunction& destructorFunction,
+            const JobId& id) :
+            Job(id, baseFunction, destructorFunction), _function(function)
+        {
+        }
 
-		JobSystemVoidJob() = delete;
-		JobSystemVoidJob(const JobSystemVoidJob&) = delete;
-		JobSystemVoidJob(JobSystemVoidJob&&) = delete;
-		JobSystemVoidJob& operator=(const JobSystemVoidJob&) = delete;
-		JobSystemVoidJob& operator=(JobSystemVoidJob&&) = delete;
-		~JobSystemVoidJob() override = default;
+        const Function _function;
+    };
 
+    class JobSystemVoidJob : public JobVoid
+    {
+      public:
+        typedef void (*DeconstructorCallback)(JobSystemVoidJob* const&);
 
-		inline void Free() {
-			_deconstructorCallback(this);
-		}
+        JobSystemVoidJob()                                   = delete;
+        JobSystemVoidJob(const JobSystemVoidJob&)            = delete;
+        JobSystemVoidJob(JobSystemVoidJob&&)                 = delete;
+        JobSystemVoidJob& operator=(const JobSystemVoidJob&) = delete;
+        JobSystemVoidJob& operator=(JobSystemVoidJob&&)      = delete;
+        ~JobSystemVoidJob() override                         = default;
 
-		JobSystemVoidJob(const Function& function, const DeconstructorCallback& deconstructorCallback)
-			: JobVoid(function, [](Job* const& base) { static_cast<JobSystemVoidJob*>(base)->Free(); }), _deconstructorCallback(deconstructorCallback) {}
+        inline void Free() { _deconstructorCallback(this); }
 
-	private:
-		const DeconstructorCallback _deconstructorCallback;
-	};
-}
+        JobSystemVoidJob(const Function& function, const DeconstructorCallback& deconstructorCallback) :
+            JobVoid(function, [](Job* const& base) { static_cast<JobSystemVoidJob*>(base)->Free(); }),
+            _deconstructorCallback(deconstructorCallback)
+        {
+        }
+
+      private:
+        const DeconstructorCallback _deconstructorCallback;
+    };
+} // namespace JbSystem
 
 // Add overload to make SimulatorId hashable for use in unordered_map
-namespace std {
-	template <>
-	struct hash<JbSystem::JobId>
-	{
-		std::size_t operator()(const JbSystem::JobId& k) const
-		{
-			return hash<std::int32_t>()(k.ID());
-		}
-	};
-}
+namespace std
+{
+    template <> struct hash<JbSystem::JobId>
+    {
+        std::size_t operator()(const JbSystem::JobId& k) const { return hash<std::int32_t>()(k.ID()); }
+    };
+} // namespace std

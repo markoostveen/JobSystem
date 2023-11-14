@@ -7,97 +7,105 @@
 #include "TestUtils.hpp"
 
 #include <iostream>
-#include <vector>
 #include <memory>
+#include <vector>
 
 using namespace JbSystem;
 
-JobId StartIncremenJob(std::vector<int>* data) {
-	auto jobSystem = JobSystem::GetInstance();
+JobId StartIncremenJob(std::vector<int>* data)
+{
+    auto jobSystem = JobSystem::GetInstance();
 
-	auto job = JobSystem::CreateJobWithParams(
-		[](auto data)
-		{
-			std::cout << "Executing Job" << std::endl;
-			for (size_t i = 0; i < data->size(); i++)
-			{
-				data->emplace_back(int(i));
-			}
-		}, data);
+    auto job = JobSystem::CreateJobWithParams(
+        [](auto data)
+        {
+            std::cout << "Executing Job" << std::endl;
+            for (size_t i = 0; i < data->size(); i++)
+            {
+                data->emplace_back(int(i));
+            }
+        },
+        data);
 
-	return jobSystem->Schedule(job, JobPriority::High);
+    return jobSystem->Schedule(job, JobPriority::High);
 }
 
-bool RunSimpleJob() {
-	auto jobSystem = JbSystem::JobSystem::GetInstance();
+bool RunSimpleJob()
+{
+    auto jobSystem = JbSystem::JobSystem::GetInstance();
 
-	auto data = new std::vector<int>();
-	data->reserve(10);
-	const JobId& jobId = StartIncremenJob(data);
+    auto data = new std::vector<int>();
+    data->reserve(10);
+    const JobId& jobId = StartIncremenJob(data);
 
-	DoStuff();
-	DoStuff();
+    DoStuff();
+    DoStuff();
 
-	jobSystem->WaitForJobCompletion(jobId);
-	for (size_t i = 0; i < data->size(); i++)
-	{
-		//If this fails or is not valid test is considered a falliure
-		if (data->at(i) != i)
-			return false;
-	}
+    jobSystem->WaitForJobCompletion(jobId);
+    for (size_t i = 0; i < data->size(); i++)
+    {
+        // If this fails or is not valid test is considered a falliure
+        if (data->at(i) != i)
+            return false;
+    }
 
-	return true;
+    return true;
 }
 
-bool RunManyDependencyJob() {
-	auto jobSystem = JobSystem::GetInstance();
+bool RunManyDependencyJob()
+{
+    auto jobSystem = JobSystem::GetInstance();
 
-	auto emptyJobFunction = []() { std::cout << " Running job " << std::endl; };
+    auto emptyJobFunction = []() { std::cout << " Running job " << std::endl; };
 
-	JobId jobId0 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
-	JobId jobId1 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
-	JobId jobId2 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+    JobId jobId0 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+    JobId jobId1 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
+    JobId jobId2 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High);
 
-	DoStuff();
-	JobId jobId3 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId2, jobId1);
-	JobId jobId4 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId3, jobId0);
+    DoStuff();
+    JobId jobId3 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId2, jobId1);
+    JobId jobId4 = jobSystem->Schedule(JobSystem::CreateJob(emptyJobFunction), JobPriority::High, jobId3, jobId0);
 
-	DoStuff();
+    DoStuff();
 
-	//Wait for 4 seconds then check if everything is completed
-	//Doing this without a single check is blocking
-	jobSystem->WaitForJobCompletion(jobId4);
-	return true;
+    // Wait for 4 seconds then check if everything is completed
+    // Doing this without a single check is blocking
+    jobSystem->WaitForJobCompletion(jobId4);
+    return true;
 }
 
-bool RunDependencyJob() {
-	auto jobSystem = JobSystem::GetInstance();
+bool RunDependencyJob()
+{
+    auto jobSystem = JobSystem::GetInstance();
 
-	std::vector<JobId> jobIds;
-	jobIds.reserve(4);
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
-	DoStuff();
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
-	jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::Low));
-	JobId jobId4 = jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High, jobIds);
-	DoStuff();
+    std::vector<JobId> jobIds;
+    jobIds.reserve(4);
+    jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
+    jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
+    DoStuff();
+    jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
+    jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High));
+    jobIds.emplace_back(jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::Low));
+    JobId jobId4 = jobSystem->Schedule(JobSystem::CreateJob([]() {}), JobPriority::High, jobIds);
+    DoStuff();
 
-	//Wait for 4 seconds then check if everything is completed
-	//Doing this without a single check is blocking
-	jobSystem->WaitForJobCompletion(jobId4);
-	return true;
+    // Wait for 4 seconds then check if everything is completed
+    // Doing this without a single check is blocking
+    jobSystem->WaitForJobCompletion(jobId4);
+    return true;
 }
 
-TEST_CASE("SingleJob") {
-	REQUIRE(RunSimpleJob());
+TEST_CASE("SingleJob")
+{
+    REQUIRE(RunSimpleJob());
 }
 
-TEST_CASE("Job with many Dependencies") {
-	REQUIRE(RunManyDependencyJob());
+TEST_CASE("Job with many Dependencies")
+{
+    REQUIRE(RunManyDependencyJob());
 }
 
-TEST_CASE("Job with dependencies") {
-	REQUIRE(RunDependencyJob());
+TEST_CASE("Job with dependencies")
+{
+    REQUIRE(RunDependencyJob());
 }

@@ -3,26 +3,28 @@
 
 #include "AtomicMutex.h"
 
-#include <thread>
+#include <condition_variable>
 #include <functional>
 #include <mutex>
-#include <unordered_set>
 #include <queue>
-#include <condition_variable>
+#include <thread>
+#include <unordered_set>
 
-namespace JbSystem {
-	class JobSystem;
+namespace JbSystem
+{
+    class JobSystem;
 
-	class JobSystemWorker {
-		friend class JobSystem;
+    class JobSystemWorker
+    {
+        friend class JobSystem;
 
-	public:
+      public:
         JobSystemWorker() = delete;
-        JobSystemWorker(JobSystemWorker &&) noexcept;
-        JobSystemWorker &operator=(const JobSystemWorker &) = delete;
-        JobSystemWorker &operator=(JobSystemWorker &&) = delete;
-        explicit JobSystemWorker(JobSystem *jobsystem);
-        JobSystemWorker(const JobSystemWorker &worker);
+        JobSystemWorker(JobSystemWorker&&) noexcept;
+        JobSystemWorker& operator=(const JobSystemWorker&) = delete;
+        JobSystemWorker& operator=(JobSystemWorker&&)      = delete;
+        explicit JobSystemWorker(JobSystem* jobsystem);
+        JobSystemWorker(const JobSystemWorker& worker);
         ~JobSystemWorker();
 
         /// <summary>
@@ -35,11 +37,11 @@ namespace JbSystem {
         void Start(); // Useful when thread became lost for some reason
         int WorkerId();
 
-        Job *TryTakeJob(const JobPriority &maxTimeInvestment);
-        void UnScheduleJob(const JobId &previouslyScheduledJob);
-        void ScheduleJob(const JobId &jobId);
+        Job* TryTakeJob(const JobPriority& maxTimeInvestment);
+        void UnScheduleJob(const JobId& previouslyScheduledJob);
+        void ScheduleJob(const JobId& jobId);
 
-        bool IsJobInQueue(const JobId &jobId);
+        bool IsJobInQueue(const JobId& jobId);
 
         size_t ScheduledJobCount();
 
@@ -49,18 +51,17 @@ namespace JbSystem {
         /// </summary>
         /// <param name="newJob"></param>
         /// <param name="priority"></param>
-        bool GiveJob(Job *const &newJob, const JobPriority& priority);
-        void GiveFutureJob(const JobId &jobId);
-        void GiveFutureJobs(const std::vector<Job *> &newjobs, int startIndex,
-                            int size);
+        bool GiveJob(Job* const& newJob, const JobPriority& priority);
+        void GiveFutureJob(const JobId& jobId);
+        void GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size);
 
         /// <summary>
         /// Finishes job and cleans up after
         /// </summary>
         /// <param name="job"></param>
-        void FinishJob(Job *&job);
+        void FinishJob(Job*& job);
 
-        bool IsJobScheduled(const JobId &jobId);
+        bool IsJobScheduled(const JobId& jobId);
 
         void ThreadLoop();
 
@@ -71,16 +72,16 @@ namespace JbSystem {
 
         bool Busy();
 
-	private:
+      private:
+        struct PausedJob
+        {
+            PausedJob(Job* affectedJob, JobSystemWorker& worker);
 
-		struct PausedJob {
-			PausedJob(Job* affectedJob, JobSystemWorker& worker);
+            Job* AffectedJob;
+            JobSystemWorker& Worker;
+        };
 
-			Job* AffectedJob;
-			JobSystemWorker& Worker;
-		};
-
-		void KeepAliveLoop();
+        void KeepAliveLoop();
 
         JobSystem* _jobsystem;
         std::thread _worker;
@@ -89,7 +90,7 @@ namespace JbSystem {
         std::deque<Job*> _lowPriorityTaskQueue;
 
         std::unordered_set<int> _scheduledJobs;
-        std::unordered_set<Job*> _jobsRequiringIgnoring; // DeadLock prevention
+        std::unordered_set<Job*> _jobsRequiringIgnoring;  // DeadLock prevention
         std::unordered_map<JobId, PausedJob> _pausedJobs; // DeadLock prevention
 
         std::atomic<bool> _shutdownRequested;
@@ -100,6 +101,6 @@ namespace JbSystem {
         JbSystem::mutex _scheduledJobsMutex;
         JbSystem::mutex _isRunningMutex;
         JbSystem::mutex _jobsRequiringIgnoringMutex; // DeadLock prevention
-        JbSystem::mutex _pausedJobsMutex; // DeadLock prevention
-	};
-}
+        JbSystem::mutex _pausedJobsMutex;            // DeadLock prevention
+    };
+} // namespace JbSystem
