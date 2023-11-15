@@ -1,0 +1,12 @@
+{
+  "name": "jobsystem",
+  "version-string": "0.0.1",
+  "port-version": 1,
+  "description": "A high performance jobsystem",
+  "dependencies": [
+    "boost-pool",
+    "boost-container",
+    "boost-range",
+    "catch2"
+  ]
+}

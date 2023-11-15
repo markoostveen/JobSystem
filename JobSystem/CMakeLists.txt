@@ -3,12 +3,19 @@
 #
 cmake_minimum_required (VERSION 3.20)
 
+include(${CMAKE_SOURCE_DIR}/Configure.cmake)
+
+# Only run standalone configuration when setting it up standalone
+if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+    ERSRunVCPKG()
+endif()
+
 project ("JobSystem")
 
 # Include sub-projects.
 add_subdirectory ("Src")
 
-option(JOBSYSTEM_TEST "Build unit test projects" OFF)
+option(JOBSYSTEM_TEST "Build unit test projects" ON)
 
 
 if(${JOBSYSTEM_TEST})
