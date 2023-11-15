@@ -294,7 +294,7 @@ namespace JbSystem
             batchSize = 1;
         }
 
-        auto parallelFunction = [](auto callback, const int& loopStartIndex,
+        auto parallelFunction = [](const auto& callback, const int& loopStartIndex,
                                    const int& loopEndIndex, Args... parallelArgs)
         {
             for (int i = loopStartIndex; i < loopEndIndex; i++)

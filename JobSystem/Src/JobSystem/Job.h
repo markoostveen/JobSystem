@@ -41,7 +41,7 @@ namespace JbSystem
         ~JobFunction()                  = default;
         template <typename T> explicit JobFunction(const T& callableObject) : callable(callableObject) {}
 
-        template <typename... Args> decltype(auto) operator()(Args&&... args) const
+        template <typename... Args> decltype(auto) operator()(Args&&... args)
         {
             return callable(std::forward<Args>(args)...);
         }
@@ -80,7 +80,7 @@ namespace JbSystem
 
         [[nodiscard]] JobId GetId() const; // Return copy it needs to be available after Job object get's destroyed
 
-        inline void Run() const { _basefunction(this); }
+        inline void Run() { _basefunction(this); }
 
         void SetIgnoreCallback(const IgnoreJobCallback& callback);
         [[nodiscard]] const IgnoreJobCallback& GetIgnoreCallback() const;
@@ -91,7 +91,7 @@ namespace JbSystem
         static JobId RequestUniqueID();
 
       protected:
-        typedef void (*BaseFunction)(const Job* const&);
+        typedef void (*BaseFunction)(Job* const&);
         typedef void (*DestructorFunction)(Job* const&);
 
         Job(const JobId& id, const BaseFunction& callback, const DestructorFunction& destructorfunction);
@@ -133,14 +133,14 @@ namespace JbSystem
                 std::forward<Args>(args)...)
         {
         }
-        inline void Run() const { std::apply(_function, _parameters);
+        inline void Run() { std::apply(_function, _parameters);
         }
 
       private:
         JobWithParameters(
             const JobId& id, JobSpecificFunction&& function, const Job::DestructorFunction& destructorFunction, Args... args) :
             Job(
-                id, [](const Job* const& base) { static_cast<const JobWithParameters<Function, Args...>*>(base)->Run(); },
+                id, [](Job* const& base) { static_cast<JobWithParameters<Function, Args...>*>(base)->Run(); },
                 destructorFunction),
             _function(std::move(function)),
             _parameters(std::forward<Args>(args)...)
@@ -148,13 +148,15 @@ namespace JbSystem
         {
         }
 
-        const JobSpecificFunction _function;
-        const Parameters _parameters;
+        JobSpecificFunction _function;
+        Parameters _parameters;
     };
 
     template<typename Function, typename... Args>
     class JobSystemWithParametersJob : public JobWithParameters<Function, Args...>
     {
+        static_assert(!std::disjunction<std::is_reference<Args>...>::value, "No references allowed in job arguments");
+
       public:
         struct Tag
         {
@@ -171,7 +173,7 @@ namespace JbSystem
         inline void Free() { _deconstructorCallback(this); }
 
         explicit JobSystemWithParametersJob(
-            JobWithParameters<Function, Args...>::JobSpecificFunction&& function, const DeconstructorCallback& deconstructorCallback,
+            typename JobWithParameters<Function, Args...>::JobSpecificFunction&& function, const DeconstructorCallback& deconstructorCallback,
             Args... args) :
             JobWithParameters<Function, Args...>(
                 std::move(function), [](Job* const& base) { static_cast<JobSystemWithParametersJob*>(base)->Free(); }, std::forward<Args>(args)... ),
@@ -207,12 +209,12 @@ namespace JbSystem
         {
         }
 
-        inline void Run() const { _function(); }
+        inline void Run() { _function(); }
 
       private:
         JobVoid(const JobId& id, const Function& function, const Job::DestructorFunction& destructorFunction) :
             Job(
-                id, [](const Job* const& base) { static_cast<const JobVoid*>(base)->Run(); }, destructorFunction),
+                id, [](Job* const& base) { static_cast<JobVoid*>(base)->Run(); }, destructorFunction),
             _function(function)
         {
         }
