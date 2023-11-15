@@ -35,7 +35,7 @@ namespace JbSystem
         return JobId{Identifier++};
     }
 
-    Job::Job(const JobId& id, const Function& callback, const DestructorFunction& destructorfunction) :
+    Job::Job(const JobId& id, const BaseFunction& callback, const DestructorFunction& destructorfunction) :
         _basefunction(callback), _destructorfunction(destructorfunction), _id(id), _ignoreCallback(nullptr), _requireEmptyJobStack(false)
     {
     }

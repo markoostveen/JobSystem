@@ -126,17 +126,17 @@ namespace JbSystem
 
         if (!firstStartup)
         {
-            auto rescheduleJobFunction = [](JobSystem* jobSystem, auto jobs)
+            auto rescheduleJobFunction = [this, jobs = std::move(jobs)]()
             {
                 const size_t totalJobs = jobs.size();
                 size_t iteration       = 0;
                 while (iteration < totalJobs)
                 {
-                    for (int i = 0; i < jobSystem->_workerCount && iteration < totalJobs; i++)
+                    for (int i = 0; i < _workerCount && iteration < totalJobs; i++)
                     {
-                        Job*& newJob = jobs.at(iteration);
+                        Job* const& newJob = jobs.at(iteration);
 
-                        JobSystemWorker& worker = jobSystem->_workers.at(i);
+                        JobSystemWorker& worker = _workers.at(i);
                         worker.ScheduleJob(newJob->GetId());
                         if (!worker.GiveJob(newJob, JobPriority::High))
                         {
@@ -147,7 +147,7 @@ namespace JbSystem
                 };
             };
 
-            Job* rescheduleJob           = CreateJobWithParams(rescheduleJobFunction, this, jobs);
+            Job* rescheduleJob           = CreateJobWithParams(rescheduleJobFunction);
             const JobId& rescheduleJobId = Schedule(rescheduleJob, JobPriority::High);
 
             // wait for rescheduling to be done, then return the caller
@@ -348,11 +348,12 @@ namespace JbSystem
     {
         // Schedule jobs in the future, then when completed, schedule them for inside workers
         const int workerId = ScheduleFutureJob(job);
+
         ScheduleAfterJobCompletion(
             dependencies, priority,
-            [](auto jobsystem, auto workerId, auto job, auto priority)
-            { jobsystem->Schedule(jobsystem->_workers.at(workerId), job, priority); },
-            this, workerId, job, priority);
+            [this, workerId, job, priority]()
+            { Schedule(_workers.at(workerId), job, priority); });
+
         return job->GetId();
     }
 
@@ -385,9 +386,9 @@ namespace JbSystem
             batchSize = 1;
         }
 
-        auto parallelFunction = [](auto callback, int loopStartIndex, int loopEndIndex)
+        auto parallelFunction = [](auto& callback, const int& loopStartIndex, const int& loopEndIndex)
         {
-            for (int& i = loopStartIndex; i < loopEndIndex; i++)
+            for (int i = loopStartIndex; i < loopEndIndex; i++)
             {
                 callback(i);
             }
@@ -414,14 +415,21 @@ namespace JbSystem
             jobStartIndex = startIndex + (i * batchSize);
             jobEndIndex   = startIndex + ((i + 1) * batchSize);
 
-            jobs.emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex));
+            auto invocationCallback = [parallelFunction, function, jobStartIndex, jobEndIndex]()
+            {
+                parallelFunction(function, jobStartIndex, jobEndIndex);
+            };
+
+            jobs.emplace_back(CreateJobWithParams([parallelFunction, function, jobStartIndex, jobEndIndex]()
+                                                  { parallelFunction(function, jobStartIndex, jobEndIndex); }));
         }
 
         jobStartIndex = startIndex + (totalBatches * batchSize);
         jobEndIndex   = endIndex;
 
         // Create last job
-        jobs.emplace_back(CreateJobWithParams(parallelFunction, function, jobStartIndex, jobEndIndex));
+        jobs.emplace_back(CreateJobWithParams(
+            [parallelFunction, function, jobStartIndex, jobEndIndex]() { parallelFunction(function, jobStartIndex, jobEndIndex); }));
 
         return jobs;
     }
@@ -445,7 +453,7 @@ namespace JbSystem
         std::vector<JobId> jobIds(newJobs.size(), JobId(0));
 
         std::vector<int> workerIds(newJobs.size(), 0);
-        auto selectWorkersJob = CreateParallelJob<std::vector<int>*, const std::vector<Job*>*, JobSystem*>(
+        auto selectWorkersJob = CreateParallelJob(
             0, static_cast<int>(newJobs.size()), batchSize,
             [](const int& jobIndex, std::vector<int>* workerIds, const std::vector<Job*>* newJobs, JobSystem* jobsystem)
             { workerIds->at(static_cast<size_t>(jobIndex)) = jobsystem->ScheduleFutureJob(newJobs->at(jobIndex)); },
@@ -457,7 +465,7 @@ namespace JbSystem
             selectWorkerJobIds.at(i) = Schedule(selectWorkersJob.at(i), JobPriority::High);
         }
 
-        auto parallelJobs = CreateParallelJob<const std::vector<Job*>*, std::vector<JobId>*, std::vector<int>*, JobPriority, JobSystem*>(
+        auto parallelJobs = CreateParallelJob(
             0, static_cast<int>(newJobs.size()), batchSize,
             [](const int& jobIndex, const std::vector<Job*>* newjobs, std::vector<JobId>* jobIds, std::vector<int>* workerIds,
                JobPriority schedulingPriority, JobSystem* jobSystem)
@@ -547,13 +555,14 @@ namespace JbSystem
             const std::vector<Job*> Newjobs;
         };
 
-        auto scheduleCallback = [](JobSystem* jobSystem, JobData* jobData, const JobPriority schedulingPriority)
+        auto* jobData          = new JobData(workerIds, newjobs);
+        auto scheduleCallback = [this, jobData, priority]()
         {
-            jobSystem->Schedule(jobData->WorkerIds, schedulingPriority, jobData->Newjobs);
+            Schedule(jobData->WorkerIds, priority, jobData->Newjobs);
             delete jobData;
         };
 
-        ScheduleAfterJobCompletion(dependencies, priority, scheduleCallback, this, new JobData(workerIds, newjobs), priority);
+        ScheduleAfterJobCompletion(dependencies, priority, scheduleCallback);
 
         return jobIds;
     }
@@ -611,9 +620,9 @@ namespace JbSystem
 
         // Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
         auto* finished  = new (location) std::atomic<bool>(false);
-        auto waitLambda = [](std::atomic<bool>* jobFinished) { jobFinished->store(true); };
+        auto waitLambda = [finished]() { finished->store(true); };
 
-        ScheduleAfterJobCompletion({jobId}, maximumHelpEffort, waitLambda, finished);
+        ScheduleAfterJobCompletion({jobId}, maximumHelpEffort, waitLambda);
         int waitingPeriod = 0;
         threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
         while (!finished->load())
@@ -1008,32 +1017,32 @@ namespace JbSystem
                 }
 
                 const std::thread::id currentThreadId = std::this_thread::get_id();
-                auto removeThread                     = [](JobSystem* jobSystem, std::thread::id id, auto thisFunction) -> void
+                auto removeThread                     = [this, currentThreadId ](auto thisFunction) -> void
                 {
-                    if (!jobSystem->_spawnedThreadsMutex.try_lock())
+                    if (!_spawnedThreadsMutex.try_lock())
                     {
-                        Job* destoryThreadJob = JobSystem::CreateJobWithParams(thisFunction, jobSystem, id, thisFunction);
-                        jobSystem->Schedule(destoryThreadJob, JobPriority::Low);
+                        Job* destoryThreadJob = JobSystem::CreateJobWithParams(thisFunction, thisFunction);
+                        Schedule(destoryThreadJob, JobPriority::Low);
                         return;
                     }
 
                     // When lock was aquired we can wait for the other thread to exit
-                    if (!jobSystem->_spawnedThreadsExecutingIgnoredJobs.contains(id))
+                    if (!_spawnedThreadsExecutingIgnoredJobs.contains(currentThreadId))
                     {
-                        jobSystem->_spawnedThreadsMutex.unlock();
+                        _spawnedThreadsMutex.unlock();
                         return;
                     }
 
-                    std::thread& threadToJoin = jobSystem->_spawnedThreadsExecutingIgnoredJobs.at(id);
+                    std::thread& threadToJoin = _spawnedThreadsExecutingIgnoredJobs.at(currentThreadId);
                     if (threadToJoin.joinable())
                     {
                         threadToJoin.join();
                     }
-                    jobSystem->_spawnedThreadsExecutingIgnoredJobs.erase(id);
-                    jobSystem->_spawnedThreadsMutex.unlock();
+                    _spawnedThreadsExecutingIgnoredJobs.erase(currentThreadId);
+                    _spawnedThreadsMutex.unlock();
                 };
 
-                Job* destoryThreadJob = JobSystem::CreateJobWithParams(removeThread, this, currentThreadId, removeThread);
+                Job* destoryThreadJob = JobSystem::CreateJobWithParams(removeThread, removeThread);
 
                 Schedule(destoryThreadJob, JobPriority::Normal);
             });

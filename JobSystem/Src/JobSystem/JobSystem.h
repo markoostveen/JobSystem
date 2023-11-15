@@ -46,8 +46,8 @@ namespace JbSystem
         void ReConfigure(unsigned int threadCount = std::thread::hardware_concurrency() - 1);
 
         // Single
-        template <class... Args>
-        static Job* CreateJobWithParams(typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
+        template<typename... Args>
+        static Job* CreateJobWithParams(const auto& function, Args...);
         static Job* CreateJob(void (*function)());
 
         static void DestroyNonScheduledJob(Job*& job);
@@ -55,7 +55,7 @@ namespace JbSystem
         // Parallel
         template <class... Args>
         static std::vector<Job*> CreateParallelJob(
-            int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function,
+            int startIndex, int endIndex, int batchSize, const auto& function,
             Args... args);
         static std::vector<Job*> CreateParallelJob(int startIndex, int endIndex, int batchSize, void (*function)(const int&));
 
@@ -141,10 +141,10 @@ namespace JbSystem
         /// <param name="dependencies">jobs to wait for before scheduling the 'newJob'</param>
         /// <param name="callback">function to execute after jobs have been completed</param>
         /// <returns></returns>
-        template <class... Args>
+        template <typename... Args>
         void ScheduleAfterJobCompletion(
             const std::vector<JobId>& dependencies, const JobPriority& dependencyPriority,
-            typename JobSystemWithParametersJob<Args...>::Function function, Args... args);
+            const auto& function, Args... args);
 
         /// <summary>
         /// Wait until all jobs committed to the jobsystem have been completed
@@ -263,23 +263,30 @@ namespace JbSystem
         std::unordered_map<std::thread::id, std::thread> _spawnedThreadsExecutingIgnoredJobs;
     };
 
-    template <class... Args>
-    inline Job* JobSystem::CreateJobWithParams(typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
+    template <typename... Args>
+    inline Job*
+    JobSystem::CreateJobWithParams(const auto& function, Args... args)
     {
-        void* location =
-            boost::singleton_pool<typename JobSystemWithParametersJob<Args...>::Tag, sizeof(JobSystemWithParametersJob<Args...>)>::malloc();
-        auto deconstructorCallback = [](JobSystemWithParametersJob<Args...>* const& job)
+        using FunctionType = std::remove_const_t<std::remove_reference_t<decltype(function)>>;
+
+        void* location = boost::singleton_pool <
+            typename JobSystemWithParametersJob<FunctionType, Args...>::Tag,
+            sizeof(JobSystemWithParametersJob<FunctionType, Args...>)>::malloc();
+        auto deconstructorCallback = [](JobSystemWithParametersJob<FunctionType, Args...>* const& job)
         {
-            job->~JobSystemWithParametersJob<Args...>();
-            boost::singleton_pool<typename JobSystemWithParametersJob<Args...>::Tag, sizeof(JobSystemWithParametersJob<Args...>)>::free(
+            job->~JobSystemWithParametersJob();
+            boost::singleton_pool<
+                typename JobSystemWithParametersJob<FunctionType, Args...>::Tag,
+                sizeof(JobSystemWithParametersJob<FunctionType, Args...>)>::free(
                 job);
         };
-        return new (location) JobSystemWithParametersJob<Args...>(function, deconstructorCallback, std::forward<Args>(args)...);
+        return new (location) JobSystemWithParametersJob<FunctionType, Args...>(
+            typename JobSystemWithParametersJob<FunctionType, Args...>::JobSpecificFunction(function), deconstructorCallback, std::forward<Args>(args)...);
     }
 
     template <class... Args>
     inline std::vector<Job*> JobSystem::CreateParallelJob(
-        int startIndex, int endIndex, int batchSize, typename JobSystemWithParametersJob<const int&, Args...>::Function function,
+        int startIndex, int endIndex, int batchSize, const auto& function,
         Args... args)
     {
         if (batchSize < 1)
@@ -287,10 +294,10 @@ namespace JbSystem
             batchSize = 1;
         }
 
-        auto parallelFunction = [](typename JobSystemWithParametersJob<const int&, Args...>::Function callback, int loopStartIndex,
-                                   int loopEndIndex, Args... parallelArgs)
+        auto parallelFunction = [](auto callback, const int& loopStartIndex,
+                                   const int& loopEndIndex, Args... parallelArgs)
         {
-            for (int& i = loopStartIndex; i < loopEndIndex; i++)
+            for (int i = loopStartIndex; i < loopEndIndex; i++)
             {
                 callback(i, std::forward<Args>(parallelArgs)...);
             }
@@ -372,10 +379,10 @@ namespace JbSystem
         return jobIds;
     }
 
-    template <class... Args>
+    template <typename... Args>
     inline void JobSystem::ScheduleAfterJobCompletion(
         const std::vector<JobId>& dependencies, const JobPriority& dependencyPriority,
-        typename JobSystemWithParametersJob<Args...>::Function function, Args... args)
+        const auto& function, Args... args)
     {
         assert(!dependencies.empty());
 
