@@ -15,9 +15,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-      
-    - name: install dependencies
-      run: sudo apt-get install libboost-all-dev
+    
     - name: Create Build Environment
       run: cmake -E make_directory ${{runner.workspace}}/build
     - name: Configure CMake

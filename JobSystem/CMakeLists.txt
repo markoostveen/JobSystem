@@ -3,11 +3,11 @@
 #
 cmake_minimum_required (VERSION 3.20)
 
-include(${CMAKE_SOURCE_DIR}/Configure.cmake)
 
 # Only run standalone configuration when setting it up standalone
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
-    ERSRunVCPKG()
+    include(${CMAKE_SOURCE_DIR}/Configure.cmake)
+    RunVCPKG()
 endif()
 
 project ("JobSystem")
@@ -20,7 +20,6 @@ option(JOBSYSTEM_TEST "Build unit test projects" ON)
 
 if(${JOBSYSTEM_TEST})
     enable_testing()
-    include(Dart)
     add_subdirectory ("Tests")
 
     add_subdirectory("Benchmarks")
