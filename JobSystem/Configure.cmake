@@ -7,7 +7,6 @@ cmake_minimum_required(VERSION 3.20)
 
 # prevent multiple inclusions of macroFunctions
 include_guard(GLOBAL)
-include(${CMAKE_SOURCE_DIR}/vcpkgSetup.cmake)
 
 option(FORCE_Portable_VCPKG "(Requires reconfigure) Force download of a portable VCPKG repository to avoid conflicts" ON)
 
@@ -53,11 +52,11 @@ macro(AlterVCPKGTriplet tripletName)
 
     
     # Read the content of the custom triplet template
-    set(CUSTOM_TRIPLET_FILE "${CMAKE_SOURCE_DIR}/vcpkg/custom-triplet.cmake.in")
-    file(READ ${CUSTOM_TRIPLET_FILE} CUSTOM_TRIPLET_CONTENT)
+    set(CUSTOM_TRIPLET_FILE "${DESTINATION_TRIPLET_FILE}.in")
+    file(READ "${CUSTOM_TRIPLET_FILE}" CUSTOM_TRIPLET_CONTENT)
 
     # Read the content of the source triplet file
-    file(APPEND ${DESTINATION_TEMPLATE_TRIPLE_FILE} "\n${CUSTOM_TRIPLET_CONTENT}")
+    file(WRITE ${DESTINATION_TEMPLATE_TRIPLE_FILE} "\n${CUSTOM_TRIPLET_CONTENT}")
 
     # Set variables to be configured
     set(VCPKG_CMAKE_CONFIGURE_OPTIONS "")
