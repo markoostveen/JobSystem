@@ -169,7 +169,9 @@ namespace JbSystem
 
         int GetWorkerCount() const;
         int GetActiveWorkerCount();
-        int GetWorkerId(JobSystemWorker* worker);
+
+        // Thread Unsafe function to get a worker thread.
+        JobSystemWorker& GetWorker(const int& index);
 
         void ShowStats(bool option = true);
 
@@ -215,6 +217,7 @@ namespace JbSystem
         void RunJobInNewThread(JobSystemWorker& worker, Job*& currentJob);
 
         int GetRandomWorker();
+        int GetWorkerId(JobSystemWorker* worker);
 
         /// <summary>
         /// Schedules a job in a specific worker

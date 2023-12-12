@@ -297,6 +297,11 @@ namespace JbSystem
         return _activeWorkerCount.load();
     }
 
+    JobSystemWorker& JobSystem::GetWorker(const int& index)
+    {
+        return _workers.at(index);
+    }
+
     int JobSystem::GetWorkerId(JobSystemWorker* worker)
     {
         for (size_t i = 0; i < _workers.size(); i++)
@@ -480,7 +485,7 @@ namespace JbSystem
         {
             schedulingJobIds.at(i) = Schedule(parallelJobs.at(i), JobPriority::High, selectWorkerJobIds);
         }
-        WaitForJobCompletion(schedulingJobIds);
+        WaitForJobCompletion(schedulingJobIds, JobPriority::High);
 
         return jobIds;
     }

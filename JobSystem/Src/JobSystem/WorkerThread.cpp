@@ -14,7 +14,6 @@ namespace JbSystem
     void JobSystemWorker::ThreadLoop()
     {
         // std::cout << "Worker has started" << std::endl;
-
         std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
         bool wasJobCompleted                                     = false;
         int noWork                                               = 0;
@@ -34,9 +33,15 @@ namespace JbSystem
             if (job != nullptr)
             {
                 _isBusy.store(true);
+#ifdef JobSystem_Analytics_Enabled
+                _timeSinceLastJob.store(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()), std::memory_order_relaxed);
+#endif
                 JobSystem::RunJob(*this, job);
                 _isBusy.store(false);
                 wasJobCompleted = true;
+#ifdef JobSystem_Analytics_Enabled
+                _timeSinceLastJob.store(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()), std::memory_order_relaxed);
+#endif
                 continue;
             }
 
@@ -63,6 +68,9 @@ namespace JbSystem
             {
                 _isBusy.store(true);
                 assert(randomWorker.IsJobScheduled(job->GetId()));
+#ifdef JobSystem_Analytics_Enabled
+                _timeSinceLastJob.store(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()), std::memory_order_relaxed);
+#endif
                 JobSystem::RunJob(randomWorker, job);
                 _isBusy.store(false);
                 wasJobCompleted = true;
@@ -73,6 +81,9 @@ namespace JbSystem
                 noWork          = 0;
                 wasJobCompleted = false;
                 startTime       = std::chrono::high_resolution_clock::now();
+#ifdef JobSystem_Analytics_Enabled
+                _timeSinceLastJob.store(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()), std::memory_order_relaxed);
+#endif
                 continue;
             }
 
@@ -106,6 +117,17 @@ namespace JbSystem
         // std::cout << "Worker has exited!" << std::endl;
     }
 
+#ifdef JobSystem_Analytics_Enabled
+    std::chrono::nanoseconds JobSystemWorker::GetConsistentTimePoint()
+    {
+            std::chrono::nanoseconds firstRead;
+
+            firstRead = _timeSinceLastJob.load(std::memory_order_acquire);
+
+            return std::chrono::high_resolution_clock::now().time_since_epoch() - firstRead; // Return the read value that is consistent across reads
+    }
+#endif
+
     void JobSystemWorker::KeepAliveLoop()
     {
         while (!_shutdownRequested.load())
@@ -131,7 +153,7 @@ namespace JbSystem
     }
 
     JobSystemWorker::JobSystemWorker(JobSystem* jobsystem) :
-        Active(false), _jobsystem(jobsystem), _shutdownRequested(false), _isRunning(false), _isBusy(false)
+        Active(false), _jobsystem(jobsystem), _shutdownRequested(false), _isRunning(false), _isBusy(false), _timeSinceLastJob(std::chrono::nanoseconds(0))
     {
     }
 
@@ -153,6 +175,10 @@ namespace JbSystem
         _shutdownRequested(other._shutdownRequested.load()),
         _isRunning(other._isRunning.load()),
         _isBusy(other._isBusy.load())
+#ifdef JobSystem_Analytics_Enabled
+        ,_timeSinceLastJob(std::chrono::nanoseconds(0))
+#endif
+
     {
         assert(!other.Active); // While moving threads should not be active
 

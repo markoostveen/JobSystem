@@ -65,6 +65,10 @@ namespace JbSystem
 
         void ThreadLoop();
 
+#ifdef JobSystem_Analytics_Enabled
+        std::chrono::nanoseconds GetConsistentTimePoint();
+#endif
+
         void RequestShutdown();
 
         // Is the read suppost to be active
@@ -102,5 +106,9 @@ namespace JbSystem
         JbSystem::mutex _isRunningMutex;
         JbSystem::mutex _jobsRequiringIgnoringMutex; // DeadLock prevention
         JbSystem::mutex _pausedJobsMutex;            // DeadLock prevention
+
+#ifdef JobSystem_Analytics_Enabled
+        std::atomic<std::chrono::nanoseconds> _timeSinceLastJob;
+#endif
     };
 } // namespace JbSystem
