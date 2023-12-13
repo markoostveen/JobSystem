@@ -56,7 +56,7 @@ namespace JbSystem
         return false;
     }
 
-    JobSystem::JobSystem(unsigned int threadCount, WorkerThreadLoop workerLoop) : _showStats(true)
+    JobSystem::JobSystem(unsigned int threadCount, WorkerThreadLoop workerLoop) : _showStats(true), _enablePeriodicOptimization(true)
     {
         if (threadCount < _minimumActiveWorkers)
         {
@@ -317,6 +317,11 @@ namespace JbSystem
     void JobSystem::ShowStats(bool option)
     {
         _showStats.store(option);
+    }
+
+    void JobSystem::TogglePeriodicWorkerOptimization(bool option)
+    {
+        _enablePeriodicOptimization.store(option, std::memory_order_relaxed);
     }
 
     static JobSystem* JobSystemSingleton;
@@ -992,7 +997,7 @@ namespace JbSystem
 
                 // Continue running jobs that might also be scheduled that normal workers cannot run
                 std::chrono::high_resolution_clock::time_point endpoint =
-                    std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(500);
+                    std::chrono::high_resolution_clock::now() + std::chrono::seconds(500);
                 while (std::chrono::high_resolution_clock::now() < endpoint)
                 {
                     for (size_t i = 0; i < 10; i++)
@@ -1016,8 +1021,8 @@ namespace JbSystem
                         selectedWorker->_pausedJobs.erase(pausedJob.AffectedJob->GetId());
                         selectedWorker->_pausedJobsMutex.unlock();
 
-                        endpoint = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(500);
                         RunJob(pausedJob.Worker, pausedJob.AffectedJob);
+                        endpoint = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(500);
                     }
                 }
 
@@ -1161,6 +1166,9 @@ namespace JbSystem
 
     void JobSystem::MaybeOptimize()
     {
+        if (!_enablePeriodicOptimization.load(std::memory_order_relaxed))
+            return;
+
         optimizeInCycles--;
         if (optimizeInCycles > 0)
         {

@@ -173,7 +173,12 @@ namespace JbSystem
         // Thread Unsafe function to get a worker thread.
         JobSystemWorker& GetWorker(const int& index);
 
+        /// <summary>
+        /// Enables or disable if states should be printed to the cout
+        /// </summary>
+        /// <param name="option"></param>
         void ShowStats(bool option = true);
+        void TogglePeriodicWorkerOptimization(bool option = true);
 
         /// <summary>
         /// Get singleton instance
@@ -260,6 +265,7 @@ namespace JbSystem
         std::atomic<bool> _preventIncomingScheduleCalls;
 
         std::atomic<bool> _showStats;
+        std::atomic<bool> _enablePeriodicOptimization;
 
         // Deadlock prevention
         JbSystem::mutex _spawnedThreadsMutex;
