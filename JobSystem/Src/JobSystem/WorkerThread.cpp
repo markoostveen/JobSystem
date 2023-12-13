@@ -32,12 +32,12 @@ namespace JbSystem
 
             if (job != nullptr)
             {
-                _isBusy.store(true);
+                _isBusy.store(true, std::memory_order_relaxed);
 #ifdef JobSystem_Analytics_Enabled
                 _timeSinceLastJob.store(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()), std::memory_order_relaxed);
 #endif
                 JobSystem::RunJob(*this, job);
-                _isBusy.store(false);
+                _isBusy.store(false, std::memory_order_relaxed);
                 wasJobCompleted = true;
 #ifdef JobSystem_Analytics_Enabled
                 _timeSinceLastJob.store(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()), std::memory_order_relaxed);
@@ -66,13 +66,13 @@ namespace JbSystem
 
             if (job != nullptr)
             {
-                _isBusy.store(true);
+                _isBusy.store(true, std::memory_order_relaxed);
                 assert(randomWorker.IsJobScheduled(job->GetId()));
 #ifdef JobSystem_Analytics_Enabled
                 _timeSinceLastJob.store(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()), std::memory_order_relaxed);
 #endif
                 JobSystem::RunJob(randomWorker, job);
-                _isBusy.store(false);
+                _isBusy.store(false, std::memory_order_relaxed);
                 wasJobCompleted = true;
             }
 
@@ -93,7 +93,7 @@ namespace JbSystem
                 continue;
             }
 
-            _isBusy.store(false);
+            _isBusy.store(false, std::memory_order_relaxed);
 
             // Check if other works are active
             bool otherWorkersActive = false;
@@ -117,16 +117,55 @@ namespace JbSystem
         // std::cout << "Worker has exited!" << std::endl;
     }
 
-#ifdef JobSystem_Analytics_Enabled
-    std::chrono::nanoseconds JobSystemWorker::GetConsistentTimePoint()
+    std::chrono::nanoseconds JobSystemWorker::GetConsistentTimePoint() const
     {
-            std::chrono::nanoseconds firstRead;
+#ifdef JobSystem_Analytics_Enabled
+        if (Busy()) {
+            return std::chrono::nanoseconds(0);
+        }
 
-            firstRead = _timeSinceLastJob.load(std::memory_order_acquire);
+        std::chrono::nanoseconds firstRead = _timeSinceLastJob.load(std::memory_order_acquire);
 
-            return std::chrono::high_resolution_clock::now().time_since_epoch() - firstRead; // Return the read value that is consistent across reads
-    }
+        return std::chrono::high_resolution_clock::now().time_since_epoch() - firstRead; // Return the read value that is consistent across reads
+#else
+        return std::chrono::nanoseconds(0);
 #endif
+
+    }
+
+    size_t JobSystemWorker::GetConsistentJobQueueSize() const
+    {
+        // Read data from deque, check values because of possible stale since we're not locking the data and might read bad memory
+        auto getSizeFromDequePossiblyStale = [](const std::deque<Job*>& deque) -> size_t {
+
+            // Read the size 3 times, and make sure that the compiler won't combine them into a single read, to have better chances to getting accurate values without locking
+            size_t firstRead = deque.size();
+            std::atomic_thread_fence(std::memory_order_acquire);
+            size_t secondRead = deque.size();
+            std::atomic_thread_fence(std::memory_order_acquire);
+            size_t thirdRead = deque.size();
+
+            if (firstRead == secondRead || firstRead == thirdRead) {
+                return firstRead;
+            }
+            else if (secondRead == thirdRead) {
+                return secondRead;
+            }
+            else {
+                return 0; // Value is probably invalid
+            }
+        };
+
+        size_t queueSize = getSizeFromDequePossiblyStale(_highPriorityTaskQueue);
+        queueSize += getSizeFromDequePossiblyStale(_normalPriorityTaskQueue);
+        queueSize += getSizeFromDequePossiblyStale(_lowPriorityTaskQueue);
+
+        // When value is very large or to small return 0 to prevent UB risks from unsafe data
+        if (queueSize < 0 || queueSize > INT16_MAX)
+            return 0;
+
+        return queueSize;
+    }
 
     void JobSystemWorker::KeepAliveLoop()
     {
@@ -147,9 +186,9 @@ namespace JbSystem
         _shutdownRequested.store(true);
     }
 
-    bool JobSystemWorker::Busy()
+    bool JobSystemWorker::Busy() const
     {
-        return _isBusy.load();
+        return _isBusy.load(std::memory_order_acquire);
     }
 
     JobSystemWorker::JobSystemWorker(JobSystem* jobsystem) :

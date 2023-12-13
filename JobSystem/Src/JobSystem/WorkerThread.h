@@ -65,16 +65,20 @@ namespace JbSystem
 
         void ThreadLoop();
 
-#ifdef JobSystem_Analytics_Enabled
-        std::chrono::nanoseconds GetConsistentTimePoint();
-#endif
+        /// <summary>
+        /// <Requires JobSystem_Analytics_Enabled>
+        /// Get the time passed since the last job was executed
+        /// </summary>
+        /// <returns></returns>
+        std::chrono::nanoseconds GetConsistentTimePoint() const;
+        size_t GetConsistentJobQueueSize() const;
 
         void RequestShutdown();
 
         // Is the read suppost to be active
         std::atomic<bool> Active;
 
-        bool Busy();
+        bool Busy() const;
 
       private:
         struct PausedJob
