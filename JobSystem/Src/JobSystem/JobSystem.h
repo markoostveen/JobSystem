@@ -172,6 +172,7 @@ namespace JbSystem
 
         // Thread Unsafe function to get a worker thread.
         JobSystemWorker& GetWorker(const int& index);
+        const JobSystemWorker& GetWorker(const int& index) const;
 
         /// <summary>
         /// Enables or disable if states should be printed to the cout
@@ -179,6 +180,8 @@ namespace JbSystem
         /// <param name="option"></param>
         void ShowStats(bool option = true);
         void TogglePeriodicWorkerOptimization(bool option = true);
+
+        void CompleteAnalyticsTick();
 
         /// <summary>
         /// Get singleton instance

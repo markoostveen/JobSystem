@@ -31,6 +31,10 @@ if(${JOBSYSTEM_ANALYTICS_ENABLED})
   target_compile_definitions(JobSystem PUBLIC JobSystem_Analytics_Enabled)
 endif()
 
+if(${JOBSYSTEM_WORKERSTEALTOGGLE_ENABLED})
+  target_compile_definitions(JobSystem PUBLIC JobSystem_WorkerStealToggle_Enabled)
+endif()
+
 target_include_directories(JobSystem PUBLIC ${JobSystemHeaderDirectory})
 set_property(TARGET JobSystem PROPERTY CXX_STANDARD 23)
 

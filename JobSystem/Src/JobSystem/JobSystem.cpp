@@ -302,6 +302,11 @@ namespace JbSystem
         return _workers.at(index);
     }
 
+    const JobSystemWorker& JobSystem::GetWorker(const int& index) const
+    {
+        return _workers.at(index);
+    }
+
     int JobSystem::GetWorkerId(JobSystemWorker* worker)
     {
         for (size_t i = 0; i < _workers.size(); i++)
@@ -322,6 +327,13 @@ namespace JbSystem
     void JobSystem::TogglePeriodicWorkerOptimization(bool option)
     {
         _enablePeriodicOptimization.store(option, std::memory_order_relaxed);
+    }
+
+    void JobSystem::CompleteAnalyticsTick()
+    {
+        for (auto& worker : _workers) {
+            worker.CompleteAnalyticsTick();
+        }
     }
 
     static JobSystem* JobSystemSingleton;
@@ -517,7 +529,6 @@ namespace JbSystem
         for (int i = 0; i < workerCount; i++)
         {
             _workers[i].GiveFutureJobs(newjobs, i * jobsPerWorker, jobsPerWorker);
-            MaybeHelpLowerQueue(JobPriority::Normal);
         }
 
         for (int i = 0; i < remainer; i++)
@@ -531,7 +542,6 @@ namespace JbSystem
             workerIds[totalAmountOfJobs - i - 1] = i;
             const JobId jobId                    = newjobs[totalAmountOfJobs - i - 1]->GetId();
             _workers[workerId].GiveFutureJob(jobId);
-            MaybeHelpLowerQueue(JobPriority::Normal);
         }
 
         return workerIds;
@@ -1192,7 +1202,7 @@ namespace JbSystem
             return;
         }
 
-        if (!_preventIncomingScheduleCalls.load())
+        if (_preventIncomingScheduleCalls.load())
         {
             return;
         }

@@ -55,6 +55,21 @@ namespace JbSystem
             // Take a possible job from a random worker
             JobSystemWorker& randomWorker = _jobsystem->_workers.at(_jobsystem->GetRandomWorker());
 
+#ifdef JobSystem_WorkerStealToggle_Enabled
+            if (_jobStealingEnabled.load(std::memory_order_relaxed)) {
+                for (size_t i = 0; i < 5; i++)
+                {
+                    job = JobSystem::TakeJobFromWorker(randomWorker, JobPriority::Low);
+                    if (job != nullptr)
+                    {
+                        break;
+                    }
+                }
+            }
+            else {
+                job = nullptr;
+            }
+#else
             for (size_t i = 0; i < 5; i++)
             {
                 job = JobSystem::TakeJobFromWorker(randomWorker, JobPriority::Low);
@@ -63,6 +78,7 @@ namespace JbSystem
                     break;
                 }
             }
+#endif
 
             if (job != nullptr)
             {
@@ -167,6 +183,28 @@ namespace JbSystem
         return queueSize;
     }
 
+    uint32_t JobSystemWorker::GetCompletedJobsThisTick() const
+    {
+#ifdef JobSystem_Analytics_Enabled
+        return _JobsFinishedThisTick.load(std::memory_order_acquire);
+#else
+        return 0;
+#endif
+    }
+
+    void JobSystemWorker::SetJobStealingToggle(bool enabled)
+    {
+#ifdef JobSystem_WorkerStealToggle_Enabled
+        _jobStealingEnabled.store(enabled, std::memory_order_acquire);
+#endif
+    }
+
+    void JobSystemWorker::CompleteAnalyticsTick()
+    {
+        while (_JobsFinishedThisTick.exchange(0, std::memory_order_relaxed) != 0) {}
+        std::atomic_thread_fence(std::memory_order_acquire);
+    }
+
     void JobSystemWorker::KeepAliveLoop()
     {
         while (!_shutdownRequested.load())
@@ -192,7 +230,15 @@ namespace JbSystem
     }
 
     JobSystemWorker::JobSystemWorker(JobSystem* jobsystem) :
-        Active(false), _jobsystem(jobsystem), _shutdownRequested(false), _isRunning(false), _isBusy(false), _timeSinceLastJob(std::chrono::nanoseconds(0))
+        Active(false),
+        _jobsystem(jobsystem),
+        _shutdownRequested(false),
+        _isRunning(false),
+        _isBusy(false),
+        _timeSinceLastJob(std::chrono::nanoseconds(0))
+#ifdef JobSystem_WorkerStealToggle_Enabled
+        ,_jobStealingEnabled(true)
+#endif
     {
     }
 
@@ -216,6 +262,10 @@ namespace JbSystem
         _isBusy(other._isBusy.load())
 #ifdef JobSystem_Analytics_Enabled
         ,_timeSinceLastJob(std::chrono::nanoseconds(0))
+#endif
+
+#ifdef JobSystem_WorkerStealToggle_Enabled
+        , _jobStealingEnabled(other._jobStealingEnabled.load())
 #endif
 
     {
@@ -486,6 +536,11 @@ namespace JbSystem
         const JobId& jobId = job->GetId();
         UnScheduleJob(jobId);
         job->Free();
+
+#ifdef JobSystem_Analytics_Enabled
+        // Increase counter for completed jobs in this worker thread. Please note this data might be stale because we don't want to slow down worker thread
+        _JobsFinishedThisTick.store(_JobsFinishedThisTick.load(std::memory_order_relaxed) + 1, std::memory_order_release);
+#endif
     }
 
     bool JobSystemWorker::IsJobScheduled(const JobId& jobId)

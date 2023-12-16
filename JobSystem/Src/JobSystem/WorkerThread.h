@@ -72,6 +72,11 @@ namespace JbSystem
         /// <returns></returns>
         std::chrono::nanoseconds GetConsistentTimePoint() const;
         size_t GetConsistentJobQueueSize() const;
+        uint32_t GetCompletedJobsThisTick() const;
+
+        void SetJobStealingToggle(bool enabled);
+
+        void CompleteAnalyticsTick();
 
         void RequestShutdown();
 
@@ -111,8 +116,13 @@ namespace JbSystem
         JbSystem::mutex _jobsRequiringIgnoringMutex; // DeadLock prevention
         JbSystem::mutex _pausedJobsMutex;            // DeadLock prevention
 
+#ifdef JobSystem_WorkerStealToggle_Enabled
+        std::atomic<bool> _jobStealingEnabled;
+#endif
+
 #ifdef JobSystem_Analytics_Enabled
         std::atomic<std::chrono::nanoseconds> _timeSinceLastJob;
+        std::atomic<uint32_t> _JobsFinishedThisTick;
 #endif
     };
 } // namespace JbSystem
