@@ -296,7 +296,7 @@ namespace JbSystem
 
     bool JobSystemWorker::IsActive() const
     {
-        return Active.load();
+        return Active.load(std::memory_order_acquire);
     }
 
     void JobSystemWorker::WaitForShutdown()

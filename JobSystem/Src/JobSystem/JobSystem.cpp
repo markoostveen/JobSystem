@@ -329,6 +329,16 @@ namespace JbSystem
         _enablePeriodicOptimization.store(option, std::memory_order_relaxed);
     }
 
+    bool JobSystem::IsUsingBuiltInOptimization() const
+    {
+        return _enablePeriodicOptimization.load(std::memory_order_acquire);
+    }
+
+    bool JobSystem::IsAcceptingNewJobs() const
+    {
+        return !_preventIncomingScheduleCalls.load(std::memory_order_acquire);
+    }
+
     void JobSystem::CompleteAnalyticsTick()
     {
         for (auto& worker : _workers) {

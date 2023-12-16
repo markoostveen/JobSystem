@@ -181,6 +181,9 @@ namespace JbSystem
         void ShowStats(bool option = true);
         void TogglePeriodicWorkerOptimization(bool option = true);
 
+        bool IsUsingBuiltInOptimization() const;
+        bool IsAcceptingNewJobs() const;
+
         void CompleteAnalyticsTick();
 
         /// <summary>
