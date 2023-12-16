@@ -329,6 +329,31 @@ namespace JbSystem
         _enablePeriodicOptimization.store(option, std::memory_order_relaxed);
     }
 
+    void JobSystem::TogglePreventAcceptingNewSchedules(bool option)
+    {
+        _preventIncomingScheduleCalls.store(option, std::memory_order_relaxed);
+    }
+
+    void JobSystem::IncreaseActiveWorkerCount()
+    {
+        uint32_t newActiveWorkerCount = _activeWorkerCount.load(std::memory_order_acquire) + 1;
+        if (newActiveWorkerCount >= _workerCount)
+            return;
+
+        while(_activeWorkerCount.exchange(newActiveWorkerCount, std::memory_order_release) != newActiveWorkerCount);
+        
+        StartAllWorkers(true);
+    }
+
+    void JobSystem::DecreaseActiveWorkerCount()
+    {
+        uint32_t newActiveWorkerCount = _activeWorkerCount.load(std::memory_order_acquire) + 1;
+        if (newActiveWorkerCount <= _minimumActiveWorkers)
+            return;
+
+        while (_activeWorkerCount.exchange(newActiveWorkerCount, std::memory_order_release) != newActiveWorkerCount);
+    }
+
     bool JobSystem::IsUsingBuiltInOptimization() const
     {
         return _enablePeriodicOptimization.load(std::memory_order_acquire);

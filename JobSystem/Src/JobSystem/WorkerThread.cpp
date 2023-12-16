@@ -195,7 +195,7 @@ namespace JbSystem
     void JobSystemWorker::SetJobStealingToggle(bool enabled)
     {
 #ifdef JobSystem_WorkerStealToggle_Enabled
-        _jobStealingEnabled.store(enabled, std::memory_order_acquire);
+        _jobStealingEnabled.store(enabled, std::memory_order_release);
 #endif
     }
 

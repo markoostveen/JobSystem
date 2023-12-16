@@ -180,6 +180,9 @@ namespace JbSystem
         /// <param name="option"></param>
         void ShowStats(bool option = true);
         void TogglePeriodicWorkerOptimization(bool option = true);
+        void TogglePreventAcceptingNewSchedules(bool option = true);
+        void IncreaseActiveWorkerCount();
+        void DecreaseActiveWorkerCount();
 
         bool IsUsingBuiltInOptimization() const;
         bool IsAcceptingNewJobs() const;
