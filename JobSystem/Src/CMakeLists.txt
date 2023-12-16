@@ -5,21 +5,23 @@ cmake_minimum_required (VERSION 3.20)
 
 option(JOBSYSTEM_KEEP_ALIVE "Allow JobSystem Workers to exit when they are not needed" OFF)
 option(JOBSYSTEM_ANALYTICS_ENABLED "Allow JobSystem Workers to collect analytics" OFF)
+option(JOBSYSTEM_WORKERSTEALTOGGLE_ENABLED "Allow Job Stealing to be turned off on workers, useful for reducing mutex overhead" OFF)
 
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "CLANG" )
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lpthread")
   endif()
 
-# Add source to this project's executable.
-file(GLOB_RECURSE  JobSystemSources
-  "JobSystem/*.cpp"
-)
+  
+  find_package(Threads REQUIRED)
+  
+# Make visual studio like filters so that we have a nice file structure in ide
+set(JobSystemHeaderDirectory "${CMAKE_CURRENT_SOURCE_DIR}")
+file(GLOB_RECURSE _SourceList ${JobSystemHeaderDirectory}/*.cpp* ${JobSystemHeaderDirectory}/*.h* ${JobSystemHeaderDirectory}/*.hpp*)
+source_group(TREE ${JobSystemHeaderDirectory} FILES ${_SourceList})
+set(JobSystemSources ${_SourceList})
 
-set(JobSystemHeaderDirectory "${CMAKE_CURRENT_SOURCE_DIR}/")
-
-find_package(Threads REQUIRED)
-
+# Create the jobsystem library
 add_library (JobSystem STATIC ${JobSystemSources})
 if(${JOBSYSTEM_KEEP_ALIVE})
   target_compile_definitions(JobSystem PUBLIC JBSYSTEM_KEEP_ALIVE)
