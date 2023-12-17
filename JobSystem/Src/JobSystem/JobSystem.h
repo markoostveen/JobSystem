@@ -168,7 +168,8 @@ namespace JbSystem
         void StartAllWorkers(bool activeWorkersOnly = true);
 
         int GetWorkerCount() const;
-        int GetActiveWorkerCount();
+        int GetActiveWorkerCount() const;
+        int GetExtraThreadsCount() const;
 
         // Thread Unsafe function to get a worker thread.
         JobSystemWorker& GetWorker(const int& index);
@@ -279,6 +280,9 @@ namespace JbSystem
         // Deadlock prevention
         JbSystem::mutex _spawnedThreadsMutex;
         std::unordered_map<std::thread::id, std::thread> _spawnedThreadsExecutingIgnoredJobs;
+#ifdef JobSystem_Analytics_Enabled
+        std::atomic<uint32_t> ExtraSpawnedThreadsCount;
+#endif
     };
 
     template <typename... Args>

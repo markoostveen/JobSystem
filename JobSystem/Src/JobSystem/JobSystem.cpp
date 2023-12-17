@@ -56,7 +56,12 @@ namespace JbSystem
         return false;
     }
 
-    JobSystem::JobSystem(unsigned int threadCount, WorkerThreadLoop workerLoop) : _showStats(true), _enablePeriodicOptimization(true)
+    JobSystem::JobSystem(unsigned int threadCount, WorkerThreadLoop workerLoop)
+        : _showStats(true),
+        _enablePeriodicOptimization(true)
+#ifdef JobSystem_Analytics_Enabled
+        ,ExtraSpawnedThreadsCount(0)
+#endif
     {
         if (threadCount < _minimumActiveWorkers)
         {
@@ -292,9 +297,18 @@ namespace JbSystem
         return _workerCount;
     }
 
-    int JobSystem::GetActiveWorkerCount()
+    int JobSystem::GetActiveWorkerCount() const
     {
         return _activeWorkerCount.load();
+    }
+
+    int JobSystem::GetExtraThreadsCount() const
+    {
+#ifdef JobSystem_Analytics_Enabled
+        return ExtraSpawnedThreadsCount.load(std::memory_order_relaxed);
+#else
+        return 0;
+#endif
     }
 
     JobSystemWorker& JobSystem::GetWorker(const int& index)
@@ -1095,6 +1109,9 @@ namespace JbSystem
                     }
                     _spawnedThreadsExecutingIgnoredJobs.erase(currentThreadId);
                     _spawnedThreadsMutex.unlock();
+#ifdef JobSystem_Analytics_Enabled
+                    ExtraSpawnedThreadsCount--;
+#endif
                 };
 
                 Job* destoryThreadJob = JobSystem::CreateJobWithParams(removeThread, removeThread);
@@ -1102,6 +1119,9 @@ namespace JbSystem
                 Schedule(destoryThreadJob, JobPriority::Normal);
             });
         const std::thread::id workerThreadId = emergencyWorker.get_id();
+#ifdef JobSystem_Analytics_Enabled
+        ExtraSpawnedThreadsCount++;
+#endif
         _spawnedThreadsMutex.lock();
         _spawnedThreadsExecutingIgnoredJobs.emplace(workerThreadId, std::move(emergencyWorker));
         _spawnedThreadsMutex.unlock();
