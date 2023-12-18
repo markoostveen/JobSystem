@@ -57,6 +57,7 @@ namespace JbSystem
 
 #ifdef JobSystem_WorkerStealToggle_Enabled
             if (_jobStealingEnabled.load(std::memory_order_relaxed)) {
+                randomWorker.ExecutePausedJob();
                 for (size_t i = 0; i < 5; i++)
                 {
                     job = JobSystem::TakeJobFromWorker(randomWorker, JobPriority::Low);
@@ -202,7 +203,7 @@ namespace JbSystem
     void JobSystemWorker::CompleteAnalyticsTick()
     {
         while (_JobsFinishedThisTick.exchange(0, std::memory_order_relaxed) != 0) {}
-        std::atomic_thread_fence(std::memory_order_acquire);
+        std::atomic_thread_fence(std::memory_order_release);
     }
 
     void JobSystemWorker::KeepAliveLoop()
@@ -372,6 +373,44 @@ namespace JbSystem
         return _jobsystem->GetWorkerId(this);
     }
 
+    std::thread::native_handle_type JobSystemWorker::WorkerNativeThreadHandle()
+    {
+        return _worker.native_handle();
+    }
+
+    bool JobSystemWorker::ExecutePausedJob()
+    {
+        return ExecutePausedJob(*this);
+    }
+
+    bool JobSystemWorker::ExecutePausedJob(JobSystemWorker& executingWorker)
+    {
+        // Find new job, but when non are left exit
+        _pausedJobsMutex.lock();
+        if (!_pausedJobs.empty())
+        {
+            JobSystemWorker::PausedJob pausedJob = _pausedJobs.begin()->second;
+            assert(&pausedJob.Worker == this);
+            _pausedJobs.erase(pausedJob.AffectedJob->GetId());
+            _pausedJobsMutex.unlock();
+
+            if (!_jobsystem->CanWorkerRunJob(executingWorker, pausedJob.AffectedJob))
+            {
+                // We cannot run the job on the incoming worker
+                _pausedJobsMutex.lock();
+                _pausedJobs.emplace(pausedJob.AffectedJob->GetId(), pausedJob);
+                _pausedJobsMutex.unlock();
+                return false;
+            }
+
+            JobSystem::RunJob(executingWorker, pausedJob.AffectedJob);
+
+        }
+
+        _pausedJobsMutex.unlock();
+        return false;
+    }
+
     Job* JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
     {
         if (!_modifyingThread.try_lock())
@@ -539,7 +578,7 @@ namespace JbSystem
 
 #ifdef JobSystem_Analytics_Enabled
         // Increase counter for completed jobs in this worker thread. Please note this data might be stale because we don't want to slow down worker thread
-        _JobsFinishedThisTick.store(_JobsFinishedThisTick.load(std::memory_order_relaxed) + 1, std::memory_order_release);
+        _JobsFinishedThisTick++;
 #endif
     }
 

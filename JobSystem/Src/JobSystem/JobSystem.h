@@ -188,7 +188,7 @@ namespace JbSystem
         bool IsUsingBuiltInOptimization() const;
         bool IsAcceptingNewJobs() const;
 
-        void CompleteAnalyticsTick();
+        std::chrono::nanoseconds CompleteAnalyticsTick();
 
         /// <summary>
         /// Get singleton instance
@@ -222,12 +222,10 @@ namespace JbSystem
 
         bool IsJobCompleted(const JobId& jobId, JobSystemWorker*& jobWorker);
 
-        void Cleanup();
-
-        bool RescheduleWorkerJobs(JobSystemWorker& worker);
+        void RescheduleWorkerJobs(JobSystemWorker& worker);
         void RescheduleWorkerJobsFromInActiveWorkers();
 
-        bool TryRunJob(JobSystemWorker& worker, Job*& currentJob);
+        bool CanWorkerRunJob(JobSystemWorker& worker, Job*& currentJob);
         static void RunJob(JobSystemWorker& worker, Job*& currentJob);
         void RunJobInNewThread(JobSystemWorker& worker, Job*& currentJob);
 
@@ -281,7 +279,8 @@ namespace JbSystem
         JbSystem::mutex _spawnedThreadsMutex;
         std::unordered_map<std::thread::id, std::thread> _spawnedThreadsExecutingIgnoredJobs;
 #ifdef JobSystem_Analytics_Enabled
-        std::atomic<uint32_t> ExtraSpawnedThreadsCount;
+        std::atomic<uint32_t> _extraSpawnedThreadsCount;
+        std::chrono::time_point<std::chrono::high_resolution_clock> _analyticsTickStartTimePoint;
 #endif
     };
 
@@ -435,6 +434,12 @@ namespace JbSystem
                     rescheduleCallback(
                         rescheduleCallback, retryCallback, callback, reschedulePriority, jobSystem, dependencies, suggestedJobWorker);
                     return;
+                }
+                else{
+
+                    // Erase dependency when it is completed
+                    dependencies->erase(dependencies->begin() + i);
+                    i--;
                 }
             }
 

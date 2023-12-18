@@ -17,7 +17,7 @@ namespace JbSystem
 
     // Prevent wild recursion patterns
     const int maxThreadDepth                     = 5;
-    static thread_local unsigned int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
+    static thread_local int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
     static thread_local boost::container::small_vector<const Job*, sizeof(const Job*) * maxThreadDepth>
         jobStack; // stack of all jobs our current thread is executing
     static thread_local bool allowedToLowerQueue         = true;
@@ -60,7 +60,7 @@ namespace JbSystem
         : _showStats(true),
         _enablePeriodicOptimization(true)
 #ifdef JobSystem_Analytics_Enabled
-        ,ExtraSpawnedThreadsCount(0)
+        ,_extraSpawnedThreadsCount(0)
 #endif
     {
         if (threadCount < _minimumActiveWorkers)
@@ -260,6 +260,12 @@ namespace JbSystem
     void JobSystem::ExecuteJob(const JobPriority& maxTimeInvestment)
     {
         JobSystemWorker& worker = _workers.at(GetRandomWorker());
+
+        if (worker.ExecutePausedJob())
+        {
+            return;
+        }
+
         Job* primedJob          = TakeJobFromWorker(worker, maxTimeInvestment);
 
         if (primedJob == nullptr)
@@ -279,9 +285,14 @@ namespace JbSystem
         }
 
         // Try and run a job
-        threadDepth++;
-        TryRunJob(worker, primedJob);
-        threadDepth--;
+        if (CanWorkerRunJob(worker, primedJob)) {
+            threadDepth++;
+            RunJob(worker, primedJob);
+            threadDepth--;
+        }
+        else if (primedJob != nullptr) {
+            RunJobInNewThread(worker, primedJob);
+        }
 
         MaybeOptimize();
     }
@@ -305,7 +316,7 @@ namespace JbSystem
     int JobSystem::GetExtraThreadsCount() const
     {
 #ifdef JobSystem_Analytics_Enabled
-        return ExtraSpawnedThreadsCount.load(std::memory_order_relaxed);
+        return _extraSpawnedThreadsCount.load(std::memory_order_acquire);
 #else
         return 0;
 #endif
@@ -340,12 +351,12 @@ namespace JbSystem
 
     void JobSystem::TogglePeriodicWorkerOptimization(bool option)
     {
-        _enablePeriodicOptimization.store(option, std::memory_order_relaxed);
+        _enablePeriodicOptimization.store(option, std::memory_order_release);
     }
 
     void JobSystem::TogglePreventAcceptingNewSchedules(bool option)
     {
-        _preventIncomingScheduleCalls.store(option, std::memory_order_relaxed);
+        _preventIncomingScheduleCalls.store(option, std::memory_order_release);
     }
 
     void JobSystem::IncreaseActiveWorkerCount()
@@ -361,7 +372,7 @@ namespace JbSystem
 
     void JobSystem::DecreaseActiveWorkerCount()
     {
-        uint32_t newActiveWorkerCount = _activeWorkerCount.load(std::memory_order_acquire) + 1;
+        uint32_t newActiveWorkerCount = _activeWorkerCount.load(std::memory_order_acquire) - 1;
         if (newActiveWorkerCount <= _minimumActiveWorkers)
             return;
 
@@ -378,11 +389,20 @@ namespace JbSystem
         return !_preventIncomingScheduleCalls.load(std::memory_order_acquire);
     }
 
-    void JobSystem::CompleteAnalyticsTick()
+    std::chrono::nanoseconds JobSystem::CompleteAnalyticsTick()
     {
+#ifdef JobSystem_Analytics_Enabled
         for (auto& worker : _workers) {
             worker.CompleteAnalyticsTick();
         }
+
+        auto newTimePoint = std::chrono::high_resolution_clock::now();
+        auto analyticsDelta = newTimePoint - _analyticsTickStartTimePoint;
+        _analyticsTickStartTimePoint = newTimePoint;
+        return analyticsDelta;
+#endif
+
+        return std::chrono::nanoseconds(0);
     }
 
     static JobSystem* JobSystemSingleton;
@@ -417,6 +437,11 @@ namespace JbSystem
 
     JobId JobSystem::Schedule(Job* const& job, const JobPriority& priority, const std::vector<JobId>& dependencies)
     {
+        // Lower job queue
+        if (_preventIncomingScheduleCalls.load(std::memory_order_relaxed)) {
+            MaybeHelpLowerQueue(priority);
+        }
+
         // Schedule jobs in the future, then when completed, schedule them for inside workers
         const int workerId = ScheduleFutureJob(job);
 
@@ -693,13 +718,22 @@ namespace JbSystem
 
         ScheduleAfterJobCompletion({jobId}, maximumHelpEffort, waitLambda);
         int waitingPeriod = 0;
+
         threadDepth--; // allow waiting job to always execute atleast one recursive task to prevent deadlock
         while (!finished->load())
         {
 
             JobSystemWorker& worker = _workers.at(GetRandomWorker());
-            Job* primedJob          = TakeJobFromWorker(worker, maximumHelpEffort);
-            TryRunJob(worker, primedJob);
+            if (!worker.ExecutePausedJob()) {
+                // When we can't execute a paused job then try to start a queued job from the worker
+                Job* primedJob          = TakeJobFromWorker(worker, maximumHelpEffort);
+                if (CanWorkerRunJob(worker, primedJob)) {
+                    RunJob(worker, primedJob);
+                }
+                else if(primedJob != nullptr) {
+                    RunJobInNewThread(worker, primedJob);
+                }
+            }
 
             waitingPeriod++;
 
@@ -896,24 +930,25 @@ namespace JbSystem
         }
     }
 
-    bool JobSystem::RescheduleWorkerJobs(JobSystemWorker& worker)
+    void JobSystem::RescheduleWorkerJobs(JobSystemWorker& worker)
     {
-        Job* job = worker.TryTakeJob(JobPriority::Low);
-        while (job != nullptr)
+        JobSystemWorker& newWorker = _workers.at(GetRandomWorker());
+        if (&worker == &newWorker)
         {
-            JobSystemWorker& newWorker = _workers.at(GetRandomWorker());
-            if (&worker == &newWorker)
-            {
-                continue;
-            }
+            return;
+        }
+
+        Job* job = nullptr;
+        do {
+            job = worker.TryTakeJob(JobPriority::Low);
+
+            if (job == nullptr)
+                break;
 
             newWorker.GiveFutureJob(job->GetId());
-            Schedule(newWorker, job, JobPriority::High);
             worker.UnScheduleJob(job->GetId());
-            job = worker.TryTakeJob(JobPriority::Low);
-        };
-
-        return true;
+            Schedule(newWorker, job, JobPriority::High);
+        } while (job != nullptr);
     }
 
     void JobSystem::RescheduleWorkerJobsFromInActiveWorkers()
@@ -925,16 +960,21 @@ namespace JbSystem
         }
     }
 
-    bool JobSystem::TryRunJob(JobSystemWorker& worker, Job*& currentJob)
+    bool JobSystem::CanWorkerRunJob(JobSystemWorker& worker, Job*& currentJob)
     {
+
         if (currentJob == nullptr)
         {
             return false;
         }
 
-        if (IsProposedJobIgnoredByJobStack(currentJob->GetId()) || currentJob->GetEmptyStackRequired())
+        if (threadDepth > 0) {
+            if (currentJob->GetEmptyStackRequired())
+                return false;
+        }
+
+        if (IsProposedJobIgnoredByJobStack(currentJob->GetId()))
         {
-            RunJobInNewThread(worker, currentJob);
             return false;
         }
 
@@ -958,7 +998,6 @@ namespace JbSystem
                 if (jobWithIgnores->GetIgnoreCallback()(currentJob->GetId()))
                 {
                     currentWorker._jobsRequiringIgnoringMutex.unlock();
-                    RunJobInNewThread(worker, currentJob);
                     return false;
                 }
             }
@@ -974,14 +1013,12 @@ namespace JbSystem
                 if (jobWithIgnores->GetIgnoreCallback()(currentJob->GetId()))
                 {
                     currentWorker._jobsRequiringIgnoringMutex.unlock();
-                    RunJobInNewThread(worker, currentJob);
                     return false;
                 }
             }
             currentWorker._jobsRequiringIgnoringMutex.unlock();
         }
 
-        RunJob(worker, currentJob);
         return true;
     }
 
@@ -1025,10 +1062,10 @@ namespace JbSystem
         worker._pausedJobs.emplace(jobId, JobSystemWorker::PausedJob(currentJob, worker));
         worker._pausedJobsMutex.unlock();
 
-        MaybeHelpLowerQueue(JobPriority::Low);
 
         // Exit function when job was picked up in reasonal amount of time
-        for (size_t i = 0; i < 10000; i++)
+        std::chrono::high_resolution_clock::time_point startTimePoint = std::chrono::high_resolution_clock::now();
+        while(std::chrono::high_resolution_clock::now() - startTimePoint < std::chrono::microseconds(50))
         {
             worker._pausedJobsMutex.lock();
             if (!worker._pausedJobs.contains(jobId))
@@ -1041,32 +1078,30 @@ namespace JbSystem
         }
 
         // Start a new thread to execute a job to prevent deadlock
-        std::atomic<bool> startSign     = false;
+        std::atomic<bool> startSign = false;
         JobSystemWorker* selectedWorker = &worker;
         auto emergencyWorker            = std::thread(
             [this, &startSign, selectedWorker]() mutable
             {
-                allowedToLowerQueue = false;
+
                 while (!startSign.load())
                 { /* Spinlock*/
                 }
                 startSign.store(false);
 
+
+                allowedToLowerQueue = false;
                 int currentWorkerIndex = _workerCount;
 
                 // Continue running jobs that might also be scheduled that normal workers cannot run
                 std::chrono::high_resolution_clock::time_point endpoint =
-                    std::chrono::high_resolution_clock::now() + std::chrono::seconds(500);
+                    std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
                 while (std::chrono::high_resolution_clock::now() < endpoint)
                 {
                     for (size_t i = 0; i < 10; i++)
                     {
                         // Find new job, but when non are left exit
-                        selectedWorker->_pausedJobsMutex.lock();
-                        if (selectedWorker->_pausedJobs.empty())
-                        {
-                            selectedWorker->_pausedJobsMutex.unlock();
-
+                        if (!selectedWorker->ExecutePausedJob()) {
                             // Select a new worker
                             currentWorkerIndex++;
                             if (currentWorkerIndex >= _workerCount)
@@ -1076,12 +1111,8 @@ namespace JbSystem
                             selectedWorker = &_workers.at(currentWorkerIndex);
                             continue;
                         }
-                        JobSystemWorker::PausedJob pausedJob = selectedWorker->_pausedJobs.begin()->second;
-                        selectedWorker->_pausedJobs.erase(pausedJob.AffectedJob->GetId());
-                        selectedWorker->_pausedJobsMutex.unlock();
 
-                        RunJob(pausedJob.Worker, pausedJob.AffectedJob);
-                        endpoint = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(500);
+                        endpoint = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
                     }
                 }
 
@@ -1110,7 +1141,7 @@ namespace JbSystem
                     _spawnedThreadsExecutingIgnoredJobs.erase(currentThreadId);
                     _spawnedThreadsMutex.unlock();
 #ifdef JobSystem_Analytics_Enabled
-                    ExtraSpawnedThreadsCount--;
+                    _extraSpawnedThreadsCount--;
 #endif
                 };
 
@@ -1120,15 +1151,17 @@ namespace JbSystem
             });
         const std::thread::id workerThreadId = emergencyWorker.get_id();
 #ifdef JobSystem_Analytics_Enabled
-        ExtraSpawnedThreadsCount++;
+        _extraSpawnedThreadsCount++;
 #endif
         _spawnedThreadsMutex.lock();
         _spawnedThreadsExecutingIgnoredJobs.emplace(workerThreadId, std::move(emergencyWorker));
         _spawnedThreadsMutex.unlock();
+
         startSign.store(true);
         while (startSign)
         { /*Wait for thread to acknowledge it has started*/
         }
+
     }
 
     int JobSystem::GetRandomWorker()
@@ -1143,6 +1176,11 @@ namespace JbSystem
 
     JobId JobSystem::Schedule(JobSystemWorker& worker, Job* const& newJob, const JobPriority& priority)
     {
+        // Lower job queue
+        if (_preventIncomingScheduleCalls.load(std::memory_order_relaxed)) {
+            MaybeHelpLowerQueue(priority);
+        }
+
         const JobId& id = newJob->GetId();
 
         worker._modifyingThread.lock();
@@ -1257,7 +1295,7 @@ namespace JbSystem
             return;
         }
 
-        if (_preventIncomingScheduleCalls.load())
+        if (!_preventIncomingScheduleCalls.load())
         {
             return;
         }
