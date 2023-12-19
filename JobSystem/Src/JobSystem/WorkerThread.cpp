@@ -373,9 +373,10 @@ namespace JbSystem
         return _jobsystem->GetWorkerId(this);
     }
 
-    std::thread::native_handle_type JobSystemWorker::WorkerNativeThreadHandle()
+    std::thread::native_handle_type JobSystemWorker::WorkerNativeThreadHandle() const
     {
-        return _worker.native_handle();
+        // Getting this handle won't compromise the workerthread
+        return const_cast<std::thread*>(&_worker)->native_handle();
     }
 
     bool JobSystemWorker::ExecutePausedJob()

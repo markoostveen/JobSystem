@@ -36,7 +36,7 @@ namespace JbSystem
         void WaitForShutdown();
         void Start(); // Useful when thread became lost for some reason
         int WorkerId();
-        std::thread::native_handle_type WorkerNativeThreadHandle();
+        std::thread::native_handle_type WorkerNativeThreadHandle() const;
 
         bool ExecutePausedJob();
         bool ExecutePausedJob(JobSystemWorker& executingWorker);
