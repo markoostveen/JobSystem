@@ -202,8 +202,10 @@ namespace JbSystem
 
     void JobSystemWorker::CompleteAnalyticsTick()
     {
+#ifdef JobSystem_Analytics_Enabled
         while (_JobsFinishedThisTick.exchange(0, std::memory_order_relaxed) != 0) {}
         std::atomic_thread_fence(std::memory_order_release);
+#endif
     }
 
     void JobSystemWorker::KeepAliveLoop()
@@ -235,8 +237,10 @@ namespace JbSystem
         _jobsystem(jobsystem),
         _shutdownRequested(false),
         _isRunning(false),
-        _isBusy(false),
-        _timeSinceLastJob(std::chrono::nanoseconds(0))
+        _isBusy(false)
+#ifdef JobSystem_Analytics_Enabled
+        ,_timeSinceLastJob(std::chrono::nanoseconds(0))
+#endif
 #ifdef JobSystem_WorkerStealToggle_Enabled
         ,_jobStealingEnabled(true)
 #endif

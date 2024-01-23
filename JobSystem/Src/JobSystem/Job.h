@@ -12,7 +12,7 @@ namespace JbSystem
         /// <summary>
         /// Doesn't represent any job
         /// </summary>
-        None = -1,
+        Unknown = -1,
 
         /// <summary>
         /// For your smallest jobs

@@ -742,7 +742,7 @@ namespace JbSystem
 
                 switch (maximumHelpEffort)
                 {
-                    case JbSystem::JobPriority::None:
+                    case JbSystem::JobPriority::Unknown:
                         break;
                     case JbSystem::JobPriority::High:
                         maximumHelpEffort = JobPriority::Normal;
