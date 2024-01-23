@@ -12,7 +12,13 @@ namespace JbSystem
         mutex(mutex&&)                 = delete;
         mutex& operator=(const mutex&) = delete;
         mutex& operator=(mutex&&)      = delete;
-        ~mutex() noexcept { unlock(); }
+        ~mutex() noexcept
+        {
+            if (_flag.load())
+            {
+                unlock();
+            }
+        }
 
         bool try_lock() noexcept
         {

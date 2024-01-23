@@ -227,6 +227,11 @@ namespace JbSystem
         _shutdownRequested.store(true);
     }
 
+    void JobSystemWorker::ReleaseShutdown()
+    {
+        _shutdownRequested.store(false);
+    }
+
     bool JobSystemWorker::Busy() const
     {
         return _isBusy.load(std::memory_order_acquire);
@@ -304,6 +309,11 @@ namespace JbSystem
         return Active.load(std::memory_order_acquire);
     }
 
+    bool JobSystemWorker::IsRunning() const
+    {
+        return _isRunning.load();
+    }
+
     void JobSystemWorker::WaitForShutdown()
     {
         const std::unique_lock ul(_isRunningMutex);
@@ -316,21 +326,33 @@ namespace JbSystem
             return;
         }
 
+        if (std::this_thread::get_id() == _worker.get_id())
+        {
+            return;
+        }
+
         _modifyingThread.lock();
 
-#ifndef JBSYSTEM_KEEP_ALIVE
-        if (IsActive() || _shutdownRequested.load())
+        if (IsRunning() || IsActive() || _shutdownRequested.load())
         {
             _modifyingThread.unlock();
             return;
         }
 
+#ifndef JBSYSTEM_KEEP_ALIVE
+
         if (_worker.get_id() != std::thread::id())
         {
             if (_worker.joinable())
+            {
+                _modifyingThread.unlock();
                 _worker.join();
+                _modifyingThread.lock();
+            }
             else
+            {
                 _worker.detach();
+            }
         }
 
         _shutdownRequested.store(false);
@@ -409,6 +431,7 @@ namespace JbSystem
             }
 
             JobSystem::RunJob(executingWorker, pausedJob.AffectedJob);
+            return true;
 
         }
 
@@ -418,7 +441,7 @@ namespace JbSystem
 
     Job* JobSystemWorker::TryTakeJob(const JobPriority& maxTimeInvestment)
     {
-        if (!_modifyingThread.try_lock())
+        if (!_jobsMutex.try_lock())
         {
             return nullptr;
         }
@@ -429,8 +452,8 @@ namespace JbSystem
             {
                 Job* value = _highPriorityTaskQueue.front();
                 _highPriorityTaskQueue.pop_front();
+                _jobsMutex.unlock();
                 assert(IsJobScheduled(value->GetId()));
-                _modifyingThread.unlock();
                 return value;
             }
         }
@@ -441,8 +464,8 @@ namespace JbSystem
             {
                 Job* value = _normalPriorityTaskQueue.front();
                 _normalPriorityTaskQueue.pop_front();
+                _jobsMutex.unlock();
                 assert(IsJobScheduled(value->GetId()));
-                _modifyingThread.unlock();
                 return value;
             }
         }
@@ -453,13 +476,13 @@ namespace JbSystem
             {
                 Job* value = _lowPriorityTaskQueue.front();
                 _lowPriorityTaskQueue.pop_front();
+                _jobsMutex.unlock();
                 assert(IsJobScheduled(value->GetId()));
-                _modifyingThread.unlock();
                 return value;
             }
         }
 
-        _modifyingThread.unlock();
+        _jobsMutex.unlock();
         return nullptr;
     }
 
@@ -467,7 +490,7 @@ namespace JbSystem
     {
 
         const int& id = jobId.ID();
-        const std::scoped_lock<JbSystem::mutex> lock(_modifyingThread);
+        const std::scoped_lock lock(_jobsMutex);
         for (const auto& highPriorityJob : _highPriorityTaskQueue)
         {
             if (highPriorityJob->GetId().ID() == id)
@@ -497,10 +520,8 @@ namespace JbSystem
 
     size_t JobSystemWorker::ScheduledJobCount()
     {
-        _scheduledJobsMutex.lock();
-        const size_t scheduledCount = _scheduledJobs.size();
-        _scheduledJobsMutex.unlock();
-        return scheduledCount;
+        std::scoped_lock scheduledJobsLock(_scheduledJobsMutex);
+        return _scheduledJobs.size();
     }
 
     void JobSystemWorker::UnScheduleJob(const JobId& previouslyScheduledJob)
@@ -508,24 +529,26 @@ namespace JbSystem
         assert(!IsJobInQueue(previouslyScheduledJob)); // In case the task is still scheduled then it wasn't removed properly
 
         const int& id = previouslyScheduledJob.ID();
-        _modifyingThread.lock();
-        _scheduledJobsMutex.lock();
-        assert(_scheduledJobs.contains(id));
-        _scheduledJobs.erase(id);
-        _scheduledJobsMutex.unlock();
-        _modifyingThread.unlock();
+
+        // From this point we need some locking
+        {
+            std::scoped_lock scheduledJobsLock(_scheduledJobsMutex);
+            assert(_scheduledJobs.contains(id));
+            _scheduledJobs.erase(id);
+        }
     }
 
     void JobSystemWorker::ScheduleJob(const JobId& jobId)
     {
         const int& id = jobId.ID();
 
-        _modifyingThread.lock();
-        _scheduledJobsMutex.lock();
-        assert(!_scheduledJobs.contains(id));
-        _scheduledJobs.emplace(id);
-        _scheduledJobsMutex.unlock();
-        _modifyingThread.unlock();
+
+        // From this point we need some locking
+        {
+            std::scoped_lock scheduledJobsLock(_scheduledJobsMutex);
+            assert(!_scheduledJobs.contains(id));
+            _scheduledJobs.emplace(id);
+        }
     }
 
     bool JobSystemWorker::GiveJob(Job* const& newJob, const JobPriority& priority)
@@ -535,8 +558,57 @@ namespace JbSystem
             return false;
         }
 
-        _modifyingThread.lock();
-        assert(_scheduledJobs.contains(newJob->GetId().ID()));
+        // From this point we need locking for modifying thread
+        {
+            std::scoped_lock modifyingLock(_jobsMutex);
+            assert(_scheduledJobs.contains(newJob->GetId().ID()));
+
+            if (priority == JobPriority::High)
+            {
+                _highPriorityTaskQueue.emplace_back(newJob);
+            }
+
+            else if (priority == JobPriority::Normal)
+            {
+                _normalPriorityTaskQueue.emplace_back(newJob);
+            }
+
+            else if (priority == JobPriority::Low)
+            {
+                _lowPriorityTaskQueue.emplace_back(newJob);
+            }
+        }
+
+
+        return true;
+    }
+
+    void JobSystemWorker::GiveFutureJob(const JobId& jobId)
+    {
+        std::scoped_lock lock(_scheduledJobsMutex);
+        _scheduledJobs.emplace(jobId.ID());
+    }
+
+    void JobSystemWorker::GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size)
+    {
+        std::scoped_lock lock(_scheduledJobsMutex);
+        for (int i = 0; i < size; i++)
+        {
+            _scheduledJobs.emplace(newjobs[startIndex + i]->GetId().ID());
+        }
+    }
+
+    void JobSystemWorker::Schedule(Job* newJob, const JobPriority& priority)
+    {
+        #ifndef NDEBUG
+        // In Debug builds ensure that the to be scheduled job isn't scheduled
+        {
+            std::scoped_lock scheduledJobsLock(_scheduledJobsMutex);
+            assert(_scheduledJobs.contains(newJob->GetId().ID()));
+
+        }
+        #endif
+        std::scoped_lock modifyingLock(_jobsMutex);
 
         if (priority == JobPriority::High)
         {
@@ -552,27 +624,6 @@ namespace JbSystem
         {
             _lowPriorityTaskQueue.emplace_back(newJob);
         }
-
-        _modifyingThread.unlock();
-
-        return true;
-    }
-
-    void JobSystemWorker::GiveFutureJob(const JobId& jobId)
-    {
-        _scheduledJobsMutex.lock();
-        _scheduledJobs.emplace(jobId.ID());
-        _scheduledJobsMutex.unlock();
-    }
-
-    void JobSystemWorker::GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size)
-    {
-        _scheduledJobsMutex.lock();
-        for (int i = 0; i < size; i++)
-        {
-            _scheduledJobs.emplace(newjobs[startIndex + i]->GetId().ID());
-        }
-        _scheduledJobsMutex.unlock();
     }
 
     void JobSystemWorker::FinishJob(Job*& job)
@@ -589,10 +640,50 @@ namespace JbSystem
 
     bool JobSystemWorker::IsJobScheduled(const JobId& jobId)
     {
-        _scheduledJobsMutex.lock();
-        const bool contains = _scheduledJobs.contains(jobId.ID());
-        _scheduledJobsMutex.unlock();
-        return contains;
+        std::scoped_lock lock(_scheduledJobsMutex);
+        return _scheduledJobs.contains(jobId.ID());
+    }
+
+    bool JobSystemWorker::IsJobIgnored(Job* job)
+    {
+        std::scoped_lock lock(_jobsRequiringIgnoringMutex);
+        for (const auto& jobWithIgnores : _jobsRequiringIgnoring)
+        {
+            // Do not execute the proposed job if it's forbidden by other jobs currently being executed
+            if (jobWithIgnores->GetIgnoreCallback()(job->GetId()))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void JobSystemWorker::IgnoreJob(Job* job)
+    {
+        const std::scoped_lock<JbSystem::mutex> lock(_jobsRequiringIgnoringMutex);
+        _jobsRequiringIgnoring.emplace(job);
+    }
+
+    void JobSystemWorker::StopIgnoringJob(Job* job)
+    {
+        const std::scoped_lock<JbSystem::mutex> lock(_jobsRequiringIgnoringMutex);
+        _jobsRequiringIgnoring.erase(job);
+    }
+
+    void JobSystemWorker::PauseJob(Job* job)
+    {
+        std::scoped_lock lock(_pausedJobsMutex);
+        _pausedJobs.emplace(job->GetId(), JobSystemWorker::PausedJob(job, *this));
+    }
+
+    bool JobSystemWorker::IsJobPaused(Job* job)
+    {
+        std::scoped_lock lock(_pausedJobsMutex);
+        if (!_pausedJobs.contains(job->GetId()))
+        {
+            return false;
+        }
+        return true;
     }
 
     JobSystemWorker::PausedJob::PausedJob(Job* affectedJob, JobSystemWorker& worker) : AffectedJob(affectedJob), Worker(worker)

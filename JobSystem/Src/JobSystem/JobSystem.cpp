@@ -175,7 +175,7 @@ namespace JbSystem
             wasActive = false;
             for (JobSystemWorker& worker : _workers)
             {
-                if (!worker._isRunning.load())
+                if (!worker.IsRunning())
                 {
                     continue;
                 }
@@ -714,7 +714,9 @@ namespace JbSystem
 
         // Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
         auto* finished  = new (location) std::atomic<bool>(false);
-        auto waitLambda = [finished]() { finished->store(true); };
+        auto waitLambda = [finished]() {
+            finished->store(true);
+            };
 
         ScheduleAfterJobCompletion({jobId}, maximumHelpEffort, waitLambda);
         int waitingPeriod = 0;
@@ -842,9 +844,7 @@ namespace JbSystem
                 continue;
             }
 
-            worker._scheduledJobsMutex.lock();
-            totalJobs += static_cast<int>(worker._scheduledJobs.size());
-            worker._scheduledJobsMutex.unlock();
+            totalJobs += static_cast<int>(worker.ScheduledJobCount());
         }
 
         votedWorkers++; // Increase to include main
@@ -922,9 +922,9 @@ namespace JbSystem
         {
             auto& worker = _workers.at(i);
 
-            if (!worker.IsActive())
+            if (!worker.IsRunning() && !worker.IsActive())
             {
-                worker._shutdownRequested.store(false);
+                worker.ReleaseShutdown();
                 worker.Start();
             }
         }
@@ -991,32 +991,14 @@ namespace JbSystem
         for (size_t i = workerIndex; i < _workers.size(); i++)
         {
             auto& currentWorker = _workers.at(i);
-            currentWorker._jobsRequiringIgnoringMutex.lock();
-            for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
-            {
-                // Do not execute the proposed job if it's forbidden by other jobs currently being executed
-                if (jobWithIgnores->GetIgnoreCallback()(currentJob->GetId()))
-                {
-                    currentWorker._jobsRequiringIgnoringMutex.unlock();
-                    return false;
-                }
-            }
-            currentWorker._jobsRequiringIgnoringMutex.unlock();
+            if (currentWorker.IsJobIgnored(currentJob))
+                return false;
         }
         for (size_t i = 0; i < workerIndex; i++)
         {
             auto& currentWorker = _workers.at(i);
-            currentWorker._jobsRequiringIgnoringMutex.lock();
-            for (const auto& jobWithIgnores : currentWorker._jobsRequiringIgnoring)
-            {
-                // Do not execute the proposed job if it's forbidden by other jobs currently being executed
-                if (jobWithIgnores->GetIgnoreCallback()(currentJob->GetId()))
-                {
-                    currentWorker._jobsRequiringIgnoringMutex.unlock();
-                    return false;
-                }
-            }
-            currentWorker._jobsRequiringIgnoringMutex.unlock();
+            if (currentWorker.IsJobIgnored(currentJob))
+                return false;
         }
 
         return true;
@@ -1031,16 +1013,14 @@ namespace JbSystem
         const IgnoreJobCallback& callback = currentJob->GetIgnoreCallback();
         if (callback)
         {
-            const std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
-            worker._jobsRequiringIgnoring.emplace(currentJob);
+            worker.IgnoreJob(currentJob);
         }
 
         currentJob->Run();
 
         if (callback)
         {
-            const std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
-            worker._jobsRequiringIgnoring.erase(currentJob);
+            worker.StopIgnoringJob(currentJob);
         }
 
         for (size_t i = 0; i < jobStack.size(); i++)
@@ -1057,23 +1037,16 @@ namespace JbSystem
 
     void JobSystem::RunJobInNewThread(JobSystemWorker& worker, Job*& currentJob)
     {
-        const JobId jobId = currentJob->GetId();
-        worker._pausedJobsMutex.lock();
-        worker._pausedJobs.emplace(jobId, JobSystemWorker::PausedJob(currentJob, worker));
-        worker._pausedJobsMutex.unlock();
-
+        worker.PauseJob(currentJob);
 
         // Exit function when job was picked up in reasonal amount of time
         std::chrono::high_resolution_clock::time_point startTimePoint = std::chrono::high_resolution_clock::now();
         while(std::chrono::high_resolution_clock::now() - startTimePoint < std::chrono::microseconds(50))
         {
-            worker._pausedJobsMutex.lock();
-            if (!worker._pausedJobs.contains(jobId))
+            if (!worker.IsJobPaused(currentJob))
             {
-                worker._pausedJobsMutex.unlock();
                 return;
             }
-            worker._pausedJobsMutex.unlock();
             std::this_thread::yield();
         }
 
@@ -1181,29 +1154,9 @@ namespace JbSystem
             MaybeHelpLowerQueue(priority);
         }
 
-        const JobId& id = newJob->GetId();
+        JobId id = newJob->GetId();
 
-        worker._modifyingThread.lock();
-        worker._scheduledJobsMutex.lock();
-        assert(worker._scheduledJobs.contains(id.ID()));
-
-        if (priority == JobPriority::High)
-        {
-            worker._highPriorityTaskQueue.emplace_back(newJob);
-        }
-
-        else if (priority == JobPriority::Normal)
-        {
-            worker._normalPriorityTaskQueue.emplace_back(newJob);
-        }
-
-        else if (priority == JobPriority::Low)
-        {
-            worker._lowPriorityTaskQueue.emplace_back(newJob);
-        }
-
-        worker._modifyingThread.unlock();
-        worker._scheduledJobsMutex.unlock();
+        worker.Schedule(newJob, priority);
 
         MaybeOptimize();
 

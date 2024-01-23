@@ -16,8 +16,6 @@ namespace JbSystem
 
     class JobSystemWorker
     {
-        friend class JobSystem;
-
       public:
         JobSystemWorker() = delete;
         JobSystemWorker(JobSystemWorker&&) noexcept;
@@ -33,6 +31,7 @@ namespace JbSystem
         /// </summary>
         /// <returns></returns>
         bool IsActive() const;
+        bool IsRunning() const;
         void WaitForShutdown();
         void Start(); // Useful when thread became lost for some reason
         int WorkerId();
@@ -58,6 +57,8 @@ namespace JbSystem
         void GiveFutureJob(const JobId& jobId);
         void GiveFutureJobs(const std::vector<Job*>& newjobs, int startIndex, int size);
 
+        void Schedule(Job* newJob, const JobPriority& priority);
+
         /// <summary>
         /// Finishes job and cleans up after
         /// </summary>
@@ -65,6 +66,12 @@ namespace JbSystem
         void FinishJob(Job*& job);
 
         bool IsJobScheduled(const JobId& jobId);
+        bool IsJobIgnored(Job* job);
+        void IgnoreJob(Job* job);
+        void StopIgnoringJob(Job* job);
+
+        void PauseJob(Job* job);
+        bool IsJobPaused(Job* job);
 
         void ThreadLoop();
 
@@ -82,6 +89,7 @@ namespace JbSystem
         void CompleteAnalyticsTick();
 
         void RequestShutdown();
+        void ReleaseShutdown();
 
         // Is the read suppost to be active
         std::atomic<bool> Active;
@@ -114,6 +122,7 @@ namespace JbSystem
         std::atomic<bool> _isBusy;
 
         JbSystem::mutex _modifyingThread;
+        JbSystem::mutex _jobsMutex;
         JbSystem::mutex _scheduledJobsMutex;
         JbSystem::mutex _isRunningMutex;
         JbSystem::mutex _jobsRequiringIgnoringMutex; // DeadLock prevention
