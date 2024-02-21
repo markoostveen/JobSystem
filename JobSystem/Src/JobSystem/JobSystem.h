@@ -417,7 +417,8 @@ namespace JbSystem
             }
 
             // When all dependencies are completed
-            jobSystem->Schedule(callback, reschedulePriority);
+            callback->Run();
+            callback->Free();
             dependencies->~vector();
             boost::singleton_pool<DependenciesTag, sizeof(std::vector<JobId>)>::free(dependencies);
         };
