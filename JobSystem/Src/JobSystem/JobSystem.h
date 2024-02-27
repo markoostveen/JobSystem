@@ -395,7 +395,7 @@ namespace JbSystem
         {
             // Prerequsites not met, queueing async job to check back later
             Job* rescheduleJob = JobSystem::CreateJobWithParams(
-                retryCallback, rescheduleCallback, retryCallback, callback, reschedulePriority, jobSystem, dependencies, suggestedWorker);
+                retryCallback, rescheduleCallback, retryCallback, callback, reschedulePriority, jobSystem, dependencies, suggestedWorker, true);
             rescheduleJob->SetEmptyStackRequired(true);
 
             jobSystem->RescheduleWorkerJobsFromInActiveWorkers();
@@ -403,7 +403,7 @@ namespace JbSystem
         };
 
         auto jobScheduler = [](auto rescheduleCallback, auto retryCallback, Job* callback, JobPriority reschedulePriority,
-                               JobSystem* jobSystem, std::vector<JobId>* dependencies, JobSystemWorker* suggestedJobWorker) -> void
+                               JobSystem* jobSystem, std::vector<JobId>* dependencies, JobSystemWorker* suggestedJobWorker, bool alreadyRescheduled) -> void
         {
             for (size_t i = 0; i < dependencies->size(); i++)
             {
@@ -414,6 +414,13 @@ namespace JbSystem
                         rescheduleCallback, retryCallback, callback, reschedulePriority, jobSystem, dependencies, suggestedJobWorker);
                     return;
                 }
+            }
+
+            // Ensure that job is never executed immediately even when dependencies are completed, as user might have intend to have extra parallelization
+            if (!alreadyRescheduled)
+            {
+                jobSystem->Schedule(callback, reschedulePriority);
+                return;
             }
 
             // When all dependencies are completed
@@ -441,6 +448,6 @@ namespace JbSystem
             });
 
         // run in sync, if dependencies have already completed we can immediatly schedule it
-        jobScheduler(rescheduleJob, jobScheduler, callbackJob, dependencyPriority, this, jobDependencies, nullptr);
+        jobScheduler(rescheduleJob, jobScheduler, callbackJob, dependencyPriority, this, jobDependencies, nullptr, false);
     }
 } // namespace JbSystem
