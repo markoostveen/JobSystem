@@ -26,8 +26,3 @@ target_include_directories(JobSystem PUBLIC ${JobSystemHeaderDirectory})
 set_property(TARGET JobSystem PROPERTY CXX_STANDARD 23)
 
 target_link_libraries(JobSystem PRIVATE Threads::Threads)
-
-find_package(Boost REQUIRED)
-target_include_directories(JobSystem PUBLIC ${Boost_INCLUDE_DIRS})
-
-#target_compile_definitions(JobSystem PUBLIC DEBUG)

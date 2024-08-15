@@ -6,7 +6,7 @@ include_guard(GLOBAL)
 macro(DownloadAndSetupVCPKG)
 
     # Set the desired version of vcpkg
-    set(VCPKG_COMMIT_ID "36fb23307e10cc6ffcec566c46c4bb3f567c82c6")
+    set(VCPKG_COMMIT_ID "1de2026f28ead93ff1773e6e680387643e914ea1")
 
     # Define the path where vcpkg will be installed
     set(ENV{VCPKG_ROOT} "${CMAKE_BINARY_DIR}/vcpkg")

@@ -52,7 +52,7 @@ long long RunBenchmark()
     auto masterJobs = std::make_shared<std::vector<JobId>>();
     masterJobs->reserve(MasterJobs);
 
-    auto emplaceMutex = std::make_shared<JbSystem::mutex>();
+    auto emplaceMutex = std::make_shared<JbSystem::Mutex>();
 
     auto scheduleJobs = JobSystem::CreateParallelJob(
         0, MasterJobs, 1,

@@ -308,7 +308,7 @@ namespace JbSystem
     {
 
         const int& id = jobId.ID();
-        const std::scoped_lock<JbSystem::mutex> lock(_modifyingThread);
+        const std::scoped_lock<JbSystem::Mutex> lock(_modifyingThread);
         for (const auto& highPriorityJob : _highPriorityTaskQueue)
         {
             if (highPriorityJob->GetId().ID() == id)

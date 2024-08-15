@@ -4,15 +4,15 @@
 
 namespace JbSystem
 {
-    class mutex
+    class Mutex
     {
       public:
-        mutex() : _flag(false) {}
-        mutex(const mutex&)            = delete;
-        mutex(mutex&&)                 = delete;
-        mutex& operator=(const mutex&) = delete;
-        mutex& operator=(mutex&&)      = delete;
-        ~mutex() noexcept { unlock(); }
+        Mutex() : _flag(false) {}
+        Mutex(const Mutex&)            = delete;
+        Mutex(Mutex&&)                 = delete;
+        Mutex& operator=(const Mutex&) = delete;
+        Mutex& operator=(Mutex&&)      = delete;
+        ~Mutex() noexcept { unlock(); }
 
         bool try_lock() noexcept
         {

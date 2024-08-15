@@ -1,11 +1,7 @@
 #include "JobSystem.h"
 
-#include <algorithm>
-#include <functional>
+#include <cstdint>
 #include <iostream>
-
-#include "boost/container/small_vector.hpp"
-#include <boost/range/adaptor/reversed.hpp>
 
 #include <string>
 
@@ -14,12 +10,15 @@ namespace JbSystem
 
     // Thread locals
     static thread_local std::uint16_t randomWorkerIndex;
+    
 
     // Prevent wild recursion patterns
     const int maxThreadDepth                     = 5;
+    using JobStack = std::array<const Job*, maxThreadDepth + 1>;
+    
     static thread_local unsigned int threadDepth = 0; // recursion guard, threads must not be able to infinitely go into scopes
-    static thread_local boost::container::small_vector<const Job*, sizeof(const Job*) * maxThreadDepth>
-        jobStack; // stack of all jobs our current thread is executing
+    static thread_local JobStack jobStack; // stack of all jobs our current thread is executing
+    static thread_local uint8_t jobStackSize = 0; // To track the current size of the stack
     static thread_local bool allowedToLowerQueue         = true;
     static thread_local unsigned int maybeLowerWorkDepth = 0;
 
@@ -27,10 +26,38 @@ namespace JbSystem
     const int maxOptimizeInCycles            = maxThreadDepth * 10;
     static thread_local int optimizeInCycles = 0;
 
+
+    void jobStackPushJob(const Job* job) {
+        if (jobStackSize < maxThreadDepth) {
+            jobStack[jobStackSize++] = job;
+        } else {
+            // Handle stack overflow if necessary
+            // For example, throw an exception or log an error
+        }
+    }
+
+    void jobStackPopJob() {
+        if (jobStackSize > 0) {
+            --jobStackSize;
+        } else {
+            // Handle stack underflow if necessary
+            // For example, throw an exception or log an error
+        }
+    }
+
+    const Job* jobStackCurrentJob() {
+        if (jobStackSize > 0) {
+            return jobStack[jobStackSize - 1];
+        }
+        return nullptr; // No job currently being executed
+    }
+
     bool JobInStack(const JobId& jobId)
     {
-        for (const auto& job : jobStack)
+        for(uint8_t i = 0; i < jobStackSize; i++)
         {
+            const auto& job = jobStack[i];
+
             if (job->GetId() == jobId)
             {
                 return true;
@@ -41,8 +68,10 @@ namespace JbSystem
 
     bool IsProposedJobIgnoredByJobStack(const JobId& proposedJob)
     {
-        for (const auto& job : jobStack)
+        for(uint8_t i = 0; i < jobStackSize; i++)
         {
+            const auto& job = jobStack[i];
+
             if (job->GetIgnoreCallback() == nullptr)
             {
                 continue;
@@ -233,8 +262,9 @@ namespace JbSystem
             ExecuteJob(JobPriority::Low); // Help complete the remaining jobs
 
             wasActive = false;
-            for (JobSystemWorker& worker : boost::adaptors::reverse(_workers))
+            for (size_t i = _workers.size(); i > 0; --i)
             {
+                JobSystemWorker& worker = _workers.at(i - 1);
                 if (!worker.IsActive())
                 {
                     continue;
@@ -367,9 +397,9 @@ namespace JbSystem
         struct VoidJobTag
         {
         };
-        void* location          = boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::malloc();
+        void* location          = MemoryPool<VoidJobTag, JobSystemVoidJob>::Get().Alloc();
         auto destructorCallback = [](JobSystemVoidJob* const& job)
-        { boost::singleton_pool<VoidJobTag, sizeof(JobSystemVoidJob)>::free(job); };
+        { MemoryPool<VoidJobTag, JobSystemVoidJob>::Get().Free(job); };
 
         return new (location) JobSystemVoidJob(function, destructorCallback);
     }
@@ -616,7 +646,7 @@ namespace JbSystem
         struct FinishedTag
         {
         };
-        void* location = boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::malloc();
+        void* location = MemoryPool<FinishedTag, std::atomic<bool>>::Get().Alloc();
 
         // Wait for task to complete, allocate boolean on the heap because it's possible that we do not have access to our stack
         auto* finished  = new (location) std::atomic<bool>(false);
@@ -660,7 +690,7 @@ namespace JbSystem
             }
         }
 
-        boost::singleton_pool<FinishedTag, sizeof(std::atomic<bool>)>::free(finished);
+        MemoryPool<FinishedTag, std::atomic<bool>>::Get().Free(finished);
         threadDepth++;
     }
 
@@ -920,12 +950,13 @@ namespace JbSystem
     {
         assert(!JobInStack(currentJob->GetId()));
 
-        jobStack.emplace_back(currentJob);
+
+        jobStackPushJob(currentJob);
 
         const IgnoreJobCallback& callback = currentJob->GetIgnoreCallback();
         if (callback)
         {
-            const std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
+            const std::scoped_lock<JbSystem::Mutex> lock(worker._jobsRequiringIgnoringMutex);
             worker._jobsRequiringIgnoring.emplace(currentJob);
         }
 
@@ -933,18 +964,11 @@ namespace JbSystem
 
         if (callback)
         {
-            const std::scoped_lock<JbSystem::mutex> lock(worker._jobsRequiringIgnoringMutex);
+            const std::scoped_lock<JbSystem::Mutex> lock(worker._jobsRequiringIgnoringMutex);
             worker._jobsRequiringIgnoring.erase(currentJob);
         }
 
-        for (size_t i = 0; i < jobStack.size(); i++)
-        {
-            if (jobStack.at(i)->GetId() == currentJob->GetId())
-            {
-                jobStack.erase(jobStack.begin() + i);
-                break;
-            }
-        }
+        jobStackPopJob();
 
         worker.FinishJob(currentJob);
     }

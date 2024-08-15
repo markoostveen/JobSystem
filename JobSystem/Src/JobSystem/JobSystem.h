@@ -2,8 +2,8 @@
 
 #include "Job.h"
 #include "WorkerThread.h"
+#include "MemoryPool.h"
 
-#include "boost/pool/singleton_pool.hpp"
 
 #include <array>
 #include <atomic>
@@ -249,7 +249,7 @@ namespace JbSystem
         int _workerCount                     = 0;
         std::vector<JobSystemWorker> _workers;
 
-        JbSystem::mutex _optimizePerformance;
+        JbSystem::Mutex _optimizePerformance;
 
         const int _maxJobExecutionsBeforePerformanceOptimization = 10;
         std::atomic<int> _jobExecutionsTillOptimization          = _maxJobExecutionsBeforePerformanceOptimization;
@@ -259,7 +259,7 @@ namespace JbSystem
         std::atomic<bool> _showStats;
 
         // Deadlock prevention
-        JbSystem::mutex _spawnedThreadsMutex;
+        JbSystem::Mutex _spawnedThreadsMutex;
         std::unordered_map<std::thread::id, std::thread> _spawnedThreadsExecutingIgnoredJobs;
     };
 
@@ -269,15 +269,15 @@ namespace JbSystem
     {
         using FunctionType = std::remove_const_t<std::remove_reference_t<decltype(function)>>;
 
-        void* location = boost::singleton_pool <
+        void* location = MemoryPool<
             typename JobSystemWithParametersJob<FunctionType, Args...>::Tag,
-            sizeof(JobSystemWithParametersJob<FunctionType, Args...>)>::malloc();
+            JobSystemWithParametersJob<FunctionType, Args...>>::Get().Alloc();
         auto deconstructorCallback = [](JobSystemWithParametersJob<FunctionType, Args...>* const& job)
         {
             job->~JobSystemWithParametersJob();
-            boost::singleton_pool<
+            MemoryPool<
                 typename JobSystemWithParametersJob<FunctionType, Args...>::Tag,
-                sizeof(JobSystemWithParametersJob<FunctionType, Args...>)>::free(
+                JobSystemWithParametersJob<FunctionType, Args...>>::Get().Free(
                 job);
         };
         return new (location) JobSystemWithParametersJob<FunctionType, Args...>(
@@ -427,10 +427,10 @@ namespace JbSystem
             callback->Run();
             callback->Free();
             dependencies->~vector();
-            boost::singleton_pool<DependenciesTag, sizeof(std::vector<JobId>)>::free(dependencies);
+            MemoryPool<DependenciesTag, std::vector<JobId>>::Get().Free(dependencies);
         };
 
-        void* location        = boost::singleton_pool<DependenciesTag, sizeof(std::vector<JobId>)>::malloc();
+        void* location        = MemoryPool<DependenciesTag, std::vector<JobId>>::Get().Alloc();
         auto* jobDependencies = new (location) std::vector<JobId>({dependencies});
 
         Job* callbackJob = JobSystem::CreateJobWithParams(function, std::forward<Args>(args)...);

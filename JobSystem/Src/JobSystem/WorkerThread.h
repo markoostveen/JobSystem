@@ -97,10 +97,10 @@ namespace JbSystem
         std::atomic<bool> _isRunning;
         std::atomic<bool> _isBusy;
 
-        JbSystem::mutex _modifyingThread;
-        JbSystem::mutex _scheduledJobsMutex;
-        JbSystem::mutex _isRunningMutex;
-        JbSystem::mutex _jobsRequiringIgnoringMutex; // DeadLock prevention
-        JbSystem::mutex _pausedJobsMutex;            // DeadLock prevention
+        JbSystem::Mutex _modifyingThread;
+        JbSystem::Mutex _scheduledJobsMutex;
+        JbSystem::Mutex _isRunningMutex;
+        JbSystem::Mutex _jobsRequiringIgnoringMutex; // DeadLock prevention
+        JbSystem::Mutex _pausedJobsMutex;            // DeadLock prevention
     };
 } // namespace JbSystem

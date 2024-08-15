@@ -145,7 +145,7 @@ double CallMultiJobHeapWorker()
 }
 
 int runIndex = 0;
-JbSystem::mutex printMutex;
+JbSystem::Mutex printMutex;
 
 void SimpleCallBenchmark()
 {
