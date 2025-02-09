@@ -18,12 +18,12 @@ namespace JbSystem
         Mutex& operator=(Mutex&&)      = delete;
         ~Mutex() noexcept { unlock(); }
 
-        bool try_lock() noexcept
+        inline bool try_lock() noexcept
         {
             return !_flag.exchange(true, std::memory_order_acquire);
         }
 
-        void lock() noexcept
+        inline void lock() noexcept
         {
             int backoff = 1;
             while (!try_lock())
@@ -46,12 +46,12 @@ namespace JbSystem
             }
         }
 
-        void unlock() noexcept
+        inline void unlock() noexcept
         {
             _flag.store(false, std::memory_order_release);
         }
 
       private:
-        alignas(64) std::atomic<bool> _flag; // Align to cache line size to avoid false sharing
+        alignas(8) std::atomic<bool> _flag; // Align to cache line size to avoid false sharing
     };
 } // namespace JbSystem
