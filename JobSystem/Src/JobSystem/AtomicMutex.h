@@ -20,7 +20,19 @@ namespace JbSystem
 
         inline bool try_lock() noexcept
         {
-            return !_flag.exchange(true, std::memory_order_acquire);
+            if (!_flag.load(std::memory_order_relaxed)) // Avoid contention when we can locally check for it
+            {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86) // Is cisc based
+                return !_flag.exchange(true, std::memory_order_acquire); // lower xchg
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM) || defined(__riscv) // is risc based
+                bool expected = false;
+                return _flag.compare_exchange_weak(expected, true, std::memory_order_acquire, std::memory_order_relaxed);
+#else
+                #error "Unsupported architecture"
+#endif
+            }
+            return false;
+
         }
 
         inline void lock() noexcept
