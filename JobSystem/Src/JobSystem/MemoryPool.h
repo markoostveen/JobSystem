@@ -89,6 +89,8 @@ namespace JbSystem{
         {
             std::lock_guard lock(mutex);
 
+            mem->~T();
+
             // mem location is now available
             // Add that at the top of the stack
             memstack[--size] = mem;

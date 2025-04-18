@@ -274,7 +274,6 @@ namespace JbSystem
             JobSystemWithParametersJob<FunctionType, Args...>>::Get().Alloc();
         auto deconstructorCallback = [](JobSystemWithParametersJob<FunctionType, Args...>* const& job)
         {
-            job->~JobSystemWithParametersJob();
             MemoryPool<
                 typename JobSystemWithParametersJob<FunctionType, Args...>::Tag,
                 JobSystemWithParametersJob<FunctionType, Args...>>::Get().Free(
@@ -426,7 +425,6 @@ namespace JbSystem
             // When all dependencies are completed
             callback->Run();
             callback->Free();
-            dependencies->~vector();
             MemoryPool<DependenciesTag, std::vector<JobId>>::Get().Free(dependencies);
         };
 
