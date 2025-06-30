@@ -112,11 +112,14 @@ namespace JbSystem
         {
             _jobsystem->WorkerLoop(this);
 
-#ifdef JBSYSTEM_KEEP_ALIVE
-            std::this_thread::yield();
-#else
-            break;
-#endif
+            if (_jobsystem->IsKeepAliveEnabled())
+            {
+                std::this_thread::yield();
+            }
+            else
+            {
+                break;
+            }
         }
     }
 
@@ -198,46 +201,28 @@ namespace JbSystem
 
         _modifyingThread.lock();
 
-#ifndef JBSYSTEM_KEEP_ALIVE
-        if (IsActive() || _shutdownRequested.load())
+        if (_jobsystem->IsKeepAliveEnabled())
         {
-            _modifyingThread.unlock();
-            return;
-        }
-
-        if (_worker.get_id() != std::thread::id())
-        {
-            if (_worker.joinable())
-                _worker.join();
-            else
-                _worker.detach();
-        }
-
-        _shutdownRequested.store(false);
-        Active.store(true);
-        _worker = std::thread(
-            [this](JobSystemWorker* worker)
+            if (IsActive() || _shutdownRequested.load())
             {
-                std::unique_lock ul(_isRunningMutex);
-                _isRunning.store(true);
-
-                worker->KeepAliveLoop();
-                _isRunning.store(false);
-                Active.store(false);
-            },
-            this);
-#else
-        if (!_shutdownRequested.load())
-        {
-            Active.store(true);
-            if (_worker.joinable())
-            {
-                _worker.join();
+                _modifyingThread.unlock();
+                return;
             }
+
+            if (_worker.get_id() != std::thread::id())
+            {
+                if (_worker.joinable())
+                    _worker.join();
+                else
+                    _worker.detach();
+            }
+
+            _shutdownRequested.store(false);
+            Active.store(true);
             _worker = std::thread(
                 [this](JobSystemWorker* worker)
                 {
-                    const std::unique_lock ul(_isRunningMutex);
+                    std::unique_lock ul(_isRunningMutex);
                     _isRunning.store(true);
 
                     worker->KeepAliveLoop();
@@ -246,7 +231,28 @@ namespace JbSystem
                 },
                 this);
         }
-#endif
+        else
+        {
+            if (!_shutdownRequested.load())
+            {
+                Active.store(true);
+                if (_worker.joinable())
+                {
+                    _worker.detach();
+                }
+                _worker = std::thread(
+                    [this](JobSystemWorker* worker)
+                    {
+                        const std::unique_lock ul(_isRunningMutex);
+                        _isRunning.store(true);
+
+                        worker->KeepAliveLoop();
+                        _isRunning.store(false);
+                        Active.store(false);
+                    },
+                    this);
+            }
+        }
 
         _modifyingThread.unlock();
         _jobsystem->OptimizePerformance(); // Determin best scaling options

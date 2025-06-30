@@ -184,6 +184,10 @@ namespace JbSystem
         void OptimizePerformance();
         void MaybeOptimize();
 
+        void SetKeepAlive(bool option);
+
+        bool IsKeepAliveEnabled() const;
+
         /// <summary>
         /// is the job system active or not
         /// </summary>
@@ -261,6 +265,8 @@ namespace JbSystem
         // Deadlock prevention
         JbSystem::Mutex _spawnedThreadsMutex;
         std::unordered_map<std::thread::id, std::thread> _spawnedThreadsExecutingIgnoredJobs;
+
+        std::atomic<bool> _keepAlive;
     };
 
     template <typename... Args>

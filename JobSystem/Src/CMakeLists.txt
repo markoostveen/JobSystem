@@ -19,9 +19,6 @@ set(JobSystemHeaderDirectory "${CMAKE_CURRENT_SOURCE_DIR}/")
 find_package(Threads REQUIRED)
 
 add_library (JobSystem STATIC ${JobSystemSources})
-if(${JOBSYSTEM_KEEP_ALIVE})
-  target_compile_definitions(JobSystem PUBLIC JBSYSTEM_KEEP_ALIVE)
-endif()
 target_include_directories(JobSystem PUBLIC ${JobSystemHeaderDirectory})
 set_property(TARGET JobSystem PROPERTY CXX_STANDARD 23)
 

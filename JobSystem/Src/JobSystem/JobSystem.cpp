@@ -86,7 +86,7 @@ namespace JbSystem
         return false;
     }
 
-    JobSystem::JobSystem(unsigned int threadCount, WorkerThreadLoop workerLoop) : _showStats(true)
+    JobSystem::JobSystem(unsigned int threadCount, WorkerThreadLoop workerLoop) : _showStats(true), _keepAlive(false)
     {
         if (threadCount < _minimumActiveWorkers)
         {
@@ -253,6 +253,16 @@ namespace JbSystem
         _activeWorkerCount.store(0);
         _workers.clear();
         return remainingJobs;
+    }
+
+    void JobSystem::SetKeepAlive(bool option)
+    {
+        _keepAlive.store(option);
+    }
+
+    bool JobSystem::IsKeepAliveEnabled() const
+    {
+        return _keepAlive.load(std::memory_order_relaxed);
     }
 
     void JobSystem::WaitForAllJobs()
