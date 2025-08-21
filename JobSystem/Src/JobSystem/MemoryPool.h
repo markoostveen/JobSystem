@@ -5,6 +5,7 @@
 #include <mutex>
 #include <thread>
 #include <cstring>
+#include <utility>
 
 #define DEFAULT_MEMPOOL_SIZE 16
 
@@ -30,7 +31,7 @@ namespace JbSystem{
       public:
         MemoryPool(uint32_t size = DEFAULT_MEMPOOL_SIZE) :
             size(0),
-            capacity(std::max(size, (uint32_t)DEFAULT_MEMPOOL_SIZE))
+            capacity(size)
         {
             T* new_block = (T*)calloc(capacity, sizeof(T));
             markers.push_back(new_block);
