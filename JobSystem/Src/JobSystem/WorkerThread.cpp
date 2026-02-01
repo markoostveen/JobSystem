@@ -211,9 +211,10 @@ namespace JbSystem
 
             if (_worker.get_id() != std::thread::id())
             {
+                // Use detach() instead of join() to prevent deadlock
+                // (join() can block indefinitely if worker thread is stuck)
+                // The new thread will synchronize via _isRunningMutex anyway
                 if (_worker.joinable())
-                    _worker.join();
-                else
                     _worker.detach();
             }
 
